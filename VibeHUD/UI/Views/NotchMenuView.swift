@@ -5,7 +5,6 @@
 //  Minimal menu matching Dynamic Island aesthetic
 //
 
-import ApplicationServices
 import Combine
 import ServiceManagement
 import Sparkle
@@ -83,8 +82,6 @@ struct NotchMenuView: View {
                         hooksInstalled = true
                     }
                 }
-
-                AccessibilityRow(isEnabled: AXIsProcessTrusted())
 
                 Divider()
                     .background(Color.white.opacity(0.08))
@@ -399,83 +396,6 @@ struct UpdateRow: View {
             updateManager.installAndRelaunch()
         default:
             break
-        }
-    }
-}
-
-// MARK: - Accessibility Permission Row
-
-struct AccessibilityRow: View {
-    let isEnabled: Bool
-
-    @State private var isHovered = false
-    @State private var refreshTrigger = false
-
-    private var currentlyEnabled: Bool {
-        // Re-check on each render when refreshTrigger changes
-        _ = refreshTrigger
-        return isEnabled
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "hand.raised")
-                .font(.system(size: 12))
-                .foregroundColor(textColor)
-                .frame(width: 16)
-
-            Text("Accessibility")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(textColor)
-
-            Spacer()
-
-            if isEnabled {
-                Circle()
-                    .fill(TerminalColors.green)
-                    .frame(width: 6, height: 6)
-
-                Text("On")
-                    .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.4))
-            } else {
-                Button(action: openAccessibilitySettings) {
-                    Text("Enable")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5)
-                                .fill(Color.white)
-                        )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
-        )
-        .onHover { isHovered = $0 }
-        .onReceive(
-            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-        ) { _ in
-            refreshTrigger.toggle()
-        }
-    }
-
-    private var textColor: Color {
-        .white.opacity(isHovered ? 1.0 : 0.7)
-    }
-
-    private func openAccessibilitySettings() {
-        if let url = URL(
-            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-        {
-            NSWorkspace.shared.open(url)
         }
     }
 }

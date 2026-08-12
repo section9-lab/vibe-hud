@@ -11,8 +11,6 @@ struct SessionPhaseHelpers {
     /// Get color for session phase
     static func phaseColor(for phase: SessionPhase) -> Color {
         switch phase {
-        case .waitingForApproval:
-            return TerminalColors.amber
         case .waitingForInput:
             return TerminalColors.green
         case .processing:
@@ -27,8 +25,6 @@ struct SessionPhaseHelpers {
     /// Get description for session phase
     static func phaseDescription(for phase: SessionPhase) -> String {
         switch phase {
-        case .waitingForApproval(let ctx):
-            return "Waiting for approval: \(ctx.toolName)"
         case .waitingForInput:
             return "Ready for input"
         case .processing:

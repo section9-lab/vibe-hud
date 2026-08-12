@@ -26,13 +26,11 @@ enum NotchOpenReason {
 enum NotchContentType: Equatable {
     case instances
     case menu
-    case chat(SessionState)
 
     var id: String {
         switch self {
         case .instances: return "instances"
         case .menu: return "menu"
-        case .chat(let session): return "chat-\(session.sessionId)"
         }
     }
 }
@@ -65,19 +63,12 @@ class NotchViewModel: ObservableObject {
     /// Dynamic opened size based on content type
     var openedSize: CGSize {
         switch contentType {
-        case .chat:
-            // Large size for chat view
-            return CGSize(
-                width: min(screenRect.width * 0.5, 600),
-                height: 580
-            )
         case .menu:
-            // Base height covers all static rows (Back, 3 picker rows, 3 toggles,
-            // Accessibility, Update, GitHub, Quit + 4 dividers + padding).
+            // Base height covers the static menu rows and dividers.
             // Picker expansion deltas added on top when expanded.
             return CGSize(
                 width: min(screenRect.width * 0.4, 480),
-                height: 540
+                height: 500
                     + screenSelector.expandedPickerHeight
                     + soundSelector.expandedPickerHeight
                     + claudeDirSelector.expandedPickerHeight
@@ -148,15 +139,6 @@ class NotchViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    /// Whether we're in chat mode (sticky behavior)
-    private var isInChatMode: Bool {
-        if case .chat = contentType { return true }
-        return false
-    }
-
-    /// The chat session we're viewing (persists across close/open)
-    private var currentChatSession: SessionState?
-
     private func handleMouseMove(_ location: CGPoint) {
         let inNotch = geometry.isPointInNotch(location)
         let inOpened =
@@ -194,10 +176,7 @@ class NotchViewModel: ObservableObject {
                 // Re-post the click so it reaches the window/app behind us
                 repostClickAt(location)
             } else if geometry.notchScreenRect.contains(location) {
-                // Clicking notch while opened - only close if NOT in chat mode
-                if !isInChatMode {
-                    notchClose()
-                }
+                notchClose()
             }
         case .closed, .popping:
             if geometry.isPointInNotch(location) {
@@ -242,28 +221,9 @@ class NotchViewModel: ObservableObject {
     func notchOpen(reason: NotchOpenReason = .unknown) {
         openReason = reason
         status = .opened
-
-        // Don't restore chat on notification - show instances list instead
-        if reason == .notification {
-            currentChatSession = nil
-            return
-        }
-
-        // Restore chat session if we had one open before
-        if let chatSession = currentChatSession {
-            // Avoid unnecessary updates if already showing this chat
-            if case .chat(let current) = contentType, current.sessionId == chatSession.sessionId {
-                return
-            }
-            contentType = .chat(chatSession)
-        }
     }
 
     func notchClose() {
-        // Save chat session before closing if in chat mode
-        if case .chat(let session) = contentType {
-            currentChatSession = session
-        }
         status = .closed
         contentType = .instances
     }
@@ -280,20 +240,6 @@ class NotchViewModel: ObservableObject {
 
     func toggleMenu() {
         contentType = contentType == .menu ? .instances : .menu
-    }
-
-    func showChat(for session: SessionState) {
-        // Avoid unnecessary updates if already showing this chat
-        if case .chat(let current) = contentType, current.sessionId == session.sessionId {
-            return
-        }
-        contentType = .chat(session)
-    }
-
-    /// Go back to instances list and clear saved chat state
-    func exitChat() {
-        currentChatSession = nil
-        contentType = .instances
     }
 
     /// Perform boot animation: expand briefly then collapse

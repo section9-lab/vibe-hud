@@ -3,7 +3,7 @@
   <h1 align="center">VibeHUD</h1>
 
   <p align="center">
-    A macOS notch overlay for Claude Code that keeps your sessions, approvals, replies, and updates within reach.
+    A privacy-first macOS notch overlay for tracking AI coding session status.
   </p>
 
 [![GitHub Star](https://img.shields.io/github/stars/section9-lab/VibeHUD?style=rounded&color=white&labelColor=000000)](https://github.com/section9-lab/VibeHUD/stargazers)
@@ -18,17 +18,15 @@
 
 ## What it does
 
-VibeHUD gives Claude Code a fast, ambient control surface on macOS. Instead of bouncing back and forth between your terminal and system prompts, you get a floating HUD for watching sessions, handling approvals, replying to prompts, and checking updates.
+VibeHUD gives Claude Code, Codex, and OpenCode a lightweight ambient status surface on macOS. The floating HUD shows which sessions are working or ready for input and can notify you with a sound when work finishes.
 
 ## Product highlights
 
-- Live session HUD for multiple Claude Code sessions
-- Approve or deny tool requests from the notch
-- Answer `AskUserQuestion` prompts without leaving the workflow
-- Open chat history and review conversations in-app
-- Send replies back to Claude sessions from the HUD
-- Works with tmux, Terminal.app, iTerm2, and Ghostty
-- Choose your display, sound, Claude directory, and startup behavior
+- Live status HUD for multiple Claude Code, Codex, and OpenCode sessions
+- Reliable lifecycle states for idle, processing, compacting, and ready for input
+- Completion sounds that do not depend on opening the HUD
+- Focus detected tmux sessions without opening or controlling conversations
+- Choose your display, completion sound, Claude directory, and startup behavior
 - Optional sensor helper for tap and vibration-based actions
 - Built-in update checks and installs through Sparkle
 
@@ -36,30 +34,26 @@ VibeHUD gives Claude Code a fast, ambient control surface on macOS. Instead of b
 
 ### Stay on top of active sessions
 
-VibeHUD watches your Claude Code activity in real time and keeps the important state visible: running work, waiting input, approvals, and recently active sessions.
+VibeHUD consumes lifecycle-only hook events and keeps the important state visible: running work, compaction, ready for input, and recently active sessions. It does not show or open conversation history.
 
-### Handle approvals faster
+### Hear when work finishes
 
-When Claude needs permission to use a tool, VibeHUD brings the approval flow to the notch so you can allow or deny it immediately.
+When a session transitions to ready for input, VibeHUD plays your selected macOS system sound. Sound playback is driven by the central lifecycle state rather than the HUD view being open.
 
-### Reply without context switching
+### Return to the right terminal
 
-When a session needs an answer, you can respond from the HUD instead of manually hunting for the right terminal pane.
-
-### Review conversations in one place
-
-You can open a session view to see history, follow progress, and keep track of what Claude has been doing.
+For detected tmux sessions, VibeHUD can focus the corresponding terminal window through yabai. It does not enter the conversation, click controls, or send input.
 
 ## Requirements
 
 - macOS 15.6+
-- Claude Code installed
+- Claude Code, Codex, or OpenCode installed
 
 ## Install
 
 Download the latest release from the GitHub releases page and move `VibeHUD.app` into `/Applications`.
 
-On first launch, VibeHUD installs the Claude Code hooks it needs automatically.
+On first launch, VibeHUD installs lifecycle hooks for supported agents automatically.
 
 Release downloads:
 - https://github.com/section9-lab/VibeHUD/releases/latest
@@ -78,16 +72,7 @@ From the notch menu, you can configure:
 
 ## Compatibility
 
-VibeHUD is built around Claude Code on macOS and can route replies through the environments it detects, including:
-
-- bridge mode
-- tmux
-- Terminal.app
-- iTerm2
-- Ghostty
-- accessibility fallback when needed
-
-Some convenience features depend on your setup. For example, terminal focusing can benefit from tmux and optional window-management tooling, and sensor interactions depend on the helper being enabled and approved.
+VibeHUD supports Claude Code, Codex, and OpenCode on macOS. Hooks report lifecycle state and terminal location metadata through a local Unix socket. Terminal focusing requires tmux and yabai; sensor interactions require the optional helper.
 
 ## Claude directory support
 
@@ -104,7 +89,11 @@ VibeHUD uses Sparkle for in-app updates, so installed builds can check for new v
 
 ## Privacy
 
-VibeHUD uses Mixpanel for product analytics such as app version, build number, macOS version, and Claude Code version metadata. The README should not promise that conversation content is collected, and the app is intended to track product usage rather than your chat transcripts.
+VibeHUD does not read or store agent messages, conversation transcripts, tool input, or permission request content. It cannot approve or deny permissions, open chats, click conversation controls, or send messages.
+
+Lifecycle hooks send only the session ID, working directory, agent source, lifecycle event, process/terminal location metadata, tmux metadata, and event ordering data to a local Unix socket.
+
+VibeHUD uses Mixpanel for product analytics including app version, build number, and macOS version. Conversation content is never included.
 
 ## Build from source
 

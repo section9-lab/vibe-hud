@@ -2,348 +2,254 @@
 //  HookInstaller.swift
 //  VibeHUD
 //
-//  Auto-installs Claude Code hooks on app launch
+//  Installs lifecycle-only hooks. No message, tool input, or permission data is collected.
 //
 
 import Foundation
 
 struct HookInstaller {
-
-    /// Install hook script and update settings.json on app launch
     static func installIfNeeded() {
-        let hooksDir = ClaudePaths.hooksDir
-        let pythonScript = hooksDir.appendingPathComponent("vibe-hud-state.py")
-        let bridgeScript = ClaudePaths.bridgeScriptPath
-        let ttyBridgeScript = hooksDir.appendingPathComponent("vibe-hud-tty-bridge.py")
-        let bridgeLauncher = ClaudePaths.bridgeLauncherPath
-
         try? FileManager.default.createDirectory(
-            at: hooksDir,
+            at: ClaudePaths.hooksDir,
             withIntermediateDirectories: true
         )
-        try? FileManager.default.createDirectory(
-            at: ClaudePaths.binDir,
-            withIntermediateDirectories: true
+        installScript(
+            resource: "vibe-hud-state",
+            to: ClaudePaths.hooksDir.appendingPathComponent("vibe-hud-state.py")
         )
-
-        installScript(resource: "vibe-hud-state", to: pythonScript)
-        installScript(resource: "vibe-hud-bridge", to: bridgeScript)
-        installScript(resource: "vibe-hud-tty-bridge", to: ttyBridgeScript)
-        installCodexHooksIfNeeded()
-        installOpenCodeHooksIfNeeded()
-
-        let launcher = """
-        #!/bin/sh
-        exec \(detectPython()) \(ClaudePaths.bridgeScriptShellPath) "$@"
-        """
-        try? launcher.write(to: bridgeLauncher, atomically: true, encoding: .utf8)
-        try? FileManager.default.setAttributes(
-            [.posixPermissions: 0o755],
-            ofItemAtPath: bridgeLauncher.path
-        )
-
-        updateSettings(at: ClaudePaths.settingsFile)
+        removeLegacyBridgeFiles()
+        updateClaudeHooks(at: ClaudePaths.settingsFile)
+        installCodexHooks()
+        installOpenCodePlugin()
     }
 
-    private static func installCodexHooksIfNeeded() {
-        try? FileManager.default.createDirectory(
-            at: CodexPaths.hooksDir,
-            withIntermediateDirectories: true
-        )
-
-        installScript(resource: "vibe-hud-state", to: CodexPaths.hookScriptPath)
-        updateCodexHooks(at: CodexPaths.hooksFile)
-    }
-
-    private static func installOpenCodeHooksIfNeeded() {
-        try? FileManager.default.createDirectory(
-            at: OpenCodePaths.pluginDir,
-            withIntermediateDirectories: true
-        )
-
-        installScript(resource: "vibe-hud", to: OpenCodePaths.pluginFile, extension: "js")
-        updateOpenCodeConfig(at: OpenCodePaths.configFile)
-    }
-
-    private static func updateSettings(at settingsURL: URL) {
-        var json: [String: Any] = [:]
-        if let data = try? Data(contentsOf: settingsURL),
-           let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            json = existing
-        }
-
-        let python = detectPython()
-        let command = "\(python) \(ClaudePaths.hookScriptShellPath) --source claude"
-        let hookEntry: [[String: Any]] = [["type": "command", "command": command]]
-        let hookEntryWithTimeout: [[String: Any]] = [["type": "command", "command": command, "timeout": 86400]]
-        let withMatcher: [[String: Any]] = [["matcher": "*", "hooks": hookEntry]]
-        let withMatcherAndTimeout: [[String: Any]] = [["matcher": "*", "hooks": hookEntryWithTimeout]]
-        let withoutMatcher: [[String: Any]] = [["hooks": hookEntry]]
-        let preCompactConfig: [[String: Any]] = [
-            ["matcher": "auto", "hooks": hookEntry],
-            ["matcher": "manual", "hooks": hookEntry]
-        ]
-
-        var hooks = json["hooks"] as? [String: Any] ?? [:]
-
-        let hookEvents: [(String, [[String: Any]])] = [
-            ("UserPromptSubmit", withoutMatcher),
-            ("PreToolUse", withMatcher),
-            ("PostToolUse", withMatcher),
-            // PostToolUseFailure fires when a tool errored or was interrupted — we
-            // currently miss these signals entirely (v2.0.x+)
-            ("PostToolUseFailure", withMatcher),
-            ("PermissionRequest", withMatcherAndTimeout),
-            // PermissionDenied surfaces auto-mode classifier denials (v2.1.88+)
-            ("PermissionDenied", withMatcher),
-            ("Notification", withMatcher),
-            ("Stop", withoutMatcher),
-            // StopFailure fires on API errors (rate limit, auth, billing) — lets
-            // us show the failure in the notch instead of appearing stuck (v2.1.78+)
-            ("StopFailure", withoutMatcher),
-            // SubagentStart pairs with existing SubagentStop (v2.0.43+)
-            ("SubagentStart", withoutMatcher),
-            ("SubagentStop", withoutMatcher),
-            ("SessionStart", withoutMatcher),
-            ("SessionEnd", withoutMatcher),
-            ("PreCompact", preCompactConfig),
-            // PostCompact pairs with PreCompact so the UI can exit the
-            // .compacting phase cleanly (v2.1.76+)
-            ("PostCompact", preCompactConfig),
-        ]
-
-        for (event, config) in hookEvents {
-            let existingEvent = hooks[event] as? [[String: Any]] ?? []
-            let cleanedEvent = existingEvent.compactMap { removingVibeHUDHooks(from: $0) }
-            hooks[event] = cleanedEvent + config
-        }
-
-        json["hooks"] = hooks
-
-        if let data = try? JSONSerialization.data(
-            withJSONObject: json,
-            options: [.prettyPrinted, .sortedKeys]
-        ) {
-            try? data.write(to: settingsURL)
-        }
-    }
-
-    private static func updateCodexHooks(at hooksURL: URL) {
-        var json: [String: Any] = [:]
-        if let data = try? Data(contentsOf: hooksURL),
-           let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            json = existing
-        }
-
-        let python = detectPython()
-        let command = "\(python) \(CodexPaths.hookScriptShellPath) --source codex"
-        let hookEntry: [[String: Any]] = [[
-            "type": "command",
-            "command": command,
-            "timeout": 10
-        ]]
-        let vibeHUDEventEntry: [String: Any] = ["hooks": hookEntry]
-
-        var hooks = json["hooks"] as? [String: Any] ?? [:]
-        let hookEvents = ["SessionStart", "UserPromptSubmit", "Stop", "PreToolUse", "PostToolUse"]
-
-        for event in hookEvents {
-            let existingEvent = hooks[event] as? [[String: Any]] ?? []
-            let cleanedEvent = existingEvent.compactMap { removingVibeHUDHooks(from: $0) }
-            hooks[event] = cleanedEvent + [vibeHUDEventEntry]
-        }
-
-        json["hooks"] = hooks
-
-        if let data = try? JSONSerialization.data(
-            withJSONObject: json,
-            options: [.prettyPrinted, .sortedKeys]
-        ) {
-            try? data.write(to: hooksURL)
-        }
-    }
-
-    private static func updateOpenCodeConfig(at configURL: URL) {
-        var json: [String: Any] = [
-            "$schema": "https://opencode.ai/config.json"
-        ]
-        if let data = try? Data(contentsOf: configURL),
-           let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            json = existing
-        }
-
-        var plugins = json["plugin"] as? [String] ?? []
-        plugins.removeAll(where: isVibeHUDOpenCodePlugin)
-        plugins.append(OpenCodePaths.pluginFileURLString)
-        json["plugin"] = plugins
-
-        if let data = try? JSONSerialization.data(
-            withJSONObject: json,
-            options: [.prettyPrinted, .sortedKeys]
-        ) {
-            try? data.write(to: configURL)
-        }
-    }
-
-    /// Check if hooks are currently installed
     static func isInstalled() -> Bool {
-        isInstalled(at: ClaudePaths.settingsFile) ||
-        isInstalled(at: CodexPaths.hooksFile) ||
-        isInstalledOpenCode(at: OpenCodePaths.configFile)
+        isInstalled(at: ClaudePaths.settingsFile)
+            || isInstalled(at: CodexPaths.hooksFile)
+            || isInstalledOpenCode(at: OpenCodePaths.configFile)
     }
 
-    /// Uninstall hooks from settings.json and remove script
     static func uninstall() {
-        let hooksDir = ClaudePaths.hooksDir
-        let pythonScript = hooksDir.appendingPathComponent("vibe-hud-state.py")
-        let bridgeScript = ClaudePaths.bridgeScriptPath
-        let ttyBridgeScript = hooksDir.appendingPathComponent("vibe-hud-tty-bridge.py")
-        let bridgeLauncher = ClaudePaths.bridgeLauncherPath
-        let settings = ClaudePaths.settingsFile
-
-        try? FileManager.default.removeItem(at: pythonScript)
-        try? FileManager.default.removeItem(at: bridgeScript)
-        try? FileManager.default.removeItem(at: ttyBridgeScript)
-        try? FileManager.default.removeItem(at: bridgeLauncher)
+        try? FileManager.default.removeItem(
+            at: ClaudePaths.hooksDir.appendingPathComponent("vibe-hud-state.py")
+        )
         try? FileManager.default.removeItem(at: CodexPaths.hookScriptPath)
         try? FileManager.default.removeItem(at: OpenCodePaths.pluginFile)
-
-        removeHooks(at: settings)
+        removeLegacyBridgeFiles()
+        removeHooks(at: ClaudePaths.settingsFile)
         removeHooks(at: CodexPaths.hooksFile)
         removeOpenCodePlugin(at: OpenCodePaths.configFile)
     }
 
-    private static func isInstalled(at url: URL) -> Bool {
-        guard let data = try? Data(contentsOf: url),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let hooks = json["hooks"] as? [String: Any] else {
-            return false
+    private static func installCodexHooks() {
+        try? FileManager.default.createDirectory(
+            at: CodexPaths.hooksDir,
+            withIntermediateDirectories: true
+        )
+        installScript(resource: "vibe-hud-state", to: CodexPaths.hookScriptPath)
+
+        var json = loadJSON(at: CodexPaths.hooksFile)
+        var hooks = cleanVibeHUDHooks(in: json["hooks"] as? [String: Any] ?? [:])
+        let command = "\(pythonExecutable) \(CodexPaths.hookScriptShellPath) --source codex"
+        let entry: [String: Any] = [
+            "hooks": [[
+                "type": "command",
+                "command": command,
+                "timeout": 5,
+            ]]
+        ]
+
+        for event in ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"] {
+            var entries = hooks[event] as? [[String: Any]] ?? []
+            entries.append(entry)
+            hooks[event] = entries
         }
 
-        for (_, value) in hooks {
-            if let entries = value as? [[String: Any]] {
-                for entry in entries {
-                    if let entryHooks = entry["hooks"] as? [[String: Any]] {
-                        for hook in entryHooks {
-                            if let cmd = hook["command"] as? String,
-                               cmd.contains("vibe-hud-state.py") {
-                                return true
-                            }
-                        }
-                    }
-                }
+        json["hooks"] = hooks
+        writeJSON(json, to: CodexPaths.hooksFile)
+    }
+
+    private static func installOpenCodePlugin() {
+        try? FileManager.default.createDirectory(
+            at: OpenCodePaths.pluginDir,
+            withIntermediateDirectories: true
+        )
+        installScript(resource: "vibe-hud", to: OpenCodePaths.pluginFile, extension: "js")
+
+        var json = loadJSON(
+            at: OpenCodePaths.configFile,
+            fallback: ["$schema": "https://opencode.ai/config.json"]
+        )
+        var plugins = json["plugin"] as? [String] ?? []
+        plugins.removeAll(where: isVibeHUDOpenCodePlugin)
+        plugins.append(OpenCodePaths.pluginFileURLString)
+        json["plugin"] = plugins
+        writeJSON(json, to: OpenCodePaths.configFile)
+    }
+
+    private static func updateClaudeHooks(at settingsURL: URL) {
+        var json = loadJSON(at: settingsURL)
+        var hooks = cleanVibeHUDHooks(in: json["hooks"] as? [String: Any] ?? [:])
+        let command = "\(pythonExecutable) \(ClaudePaths.hookScriptShellPath) --source claude"
+        let commandHook: [String: Any] = [
+            "type": "command",
+            "command": command,
+            "timeout": 5,
+        ]
+
+        func add(_ event: String, matcher: String? = nil) {
+            var eventEntries = hooks[event] as? [[String: Any]] ?? []
+            var entry: [String: Any] = ["hooks": [commandHook]]
+            if let matcher {
+                entry["matcher"] = matcher
+            }
+            eventEntries.append(entry)
+            hooks[event] = eventEntries
+        }
+
+        add("SessionStart", matcher: "startup|resume|clear")
+        add("UserPromptSubmit")
+        add("PreToolUse", matcher: "*")
+        add("PostToolUse", matcher: "*")
+        add("PostToolUseFailure", matcher: "*")
+        add("SubagentStart")
+        add("SubagentStop")
+        // Claude's Notification matcher does not filter on notification_type,
+        // so subscribe broadly and let the hook script drop everything but idle_prompt.
+        add("Notification", matcher: "*")
+        add("Stop")
+        add("StopFailure")
+        add("SessionEnd")
+        add("PreCompact", matcher: "manual|auto")
+        add("PostCompact", matcher: "manual|auto")
+
+        json["hooks"] = hooks
+        writeJSON(json, to: settingsURL)
+    }
+
+    private static func cleanVibeHUDHooks(in hooks: [String: Any]) -> [String: Any] {
+        var result = hooks
+        for (event, value) in hooks {
+            guard let entries = value as? [[String: Any]] else { continue }
+            let cleaned = entries.compactMap(removingVibeHUDHooks)
+            if cleaned.isEmpty {
+                result.removeValue(forKey: event)
+            } else {
+                result[event] = cleaned
             }
         }
-        return false
+        return result
     }
 
     private static func removeHooks(at url: URL) {
-        guard let data = try? Data(contentsOf: url),
-              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              var hooks = json["hooks"] as? [String: Any] else {
-            return
-        }
-
-        for (event, value) in hooks {
-            if var entries = value as? [[String: Any]] {
-                entries = entries.compactMap { removingVibeHUDHooks(from: $0) }
-
-                if entries.isEmpty {
-                    hooks.removeValue(forKey: event)
-                } else {
-                    hooks[event] = entries
-                }
-            }
-        }
-
-        if hooks.isEmpty {
+        var json = loadJSON(at: url)
+        guard let hooks = json["hooks"] as? [String: Any] else { return }
+        let cleaned = cleanVibeHUDHooks(in: hooks)
+        if cleaned.isEmpty {
             json.removeValue(forKey: "hooks")
         } else {
-            json["hooks"] = hooks
+            json["hooks"] = cleaned
         }
-
-        if let updated = try? JSONSerialization.data(
-            withJSONObject: json,
-            options: [.prettyPrinted, .sortedKeys]
-        ) {
-            try? updated.write(to: url)
-        }
+        writeJSON(json, to: url)
     }
 
     private static func removeOpenCodePlugin(at url: URL) {
-        guard let data = try? Data(contentsOf: url),
-              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return
-        }
-
+        var json = loadJSON(at: url)
         var plugins = json["plugin"] as? [String] ?? []
         plugins.removeAll(where: isVibeHUDOpenCodePlugin)
-
         if plugins.isEmpty {
             json.removeValue(forKey: "plugin")
         } else {
             json["plugin"] = plugins
         }
+        writeJSON(json, to: url)
+    }
 
-        if let updated = try? JSONSerialization.data(
-            withJSONObject: json,
-            options: [.prettyPrinted, .sortedKeys]
-        ) {
-            try? updated.write(to: url)
+    private static func isInstalled(at url: URL) -> Bool {
+        guard let hooks = loadJSON(at: url)["hooks"] as? [String: Any] else { return false }
+        return hooks.values.contains { value in
+            guard let entries = value as? [[String: Any]] else { return false }
+            return entries.contains { entry in
+                (entry["hooks"] as? [[String: Any]])?.contains(where: isVibeHUDHook) == true
+            }
         }
     }
 
     private static func isInstalledOpenCode(at url: URL) -> Bool {
-        guard let data = try? Data(contentsOf: url),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let plugins = json["plugin"] as? [String] else {
-            return false
-        }
-
+        let plugins = loadJSON(at: url)["plugin"] as? [String] ?? []
         return plugins.contains(where: isVibeHUDOpenCodePlugin)
     }
 
-    private static func installScript(resource: String, to destination: URL, extension ext: String = "py") {
-        guard let bundled = Bundle.main.url(forResource: resource, withExtension: ext) else { return }
+    private static func installScript(
+        resource: String,
+        to destination: URL,
+        extension ext: String = "py"
+    ) {
+        guard let bundled = Bundle.main.url(forResource: resource, withExtension: ext) else {
+            return
+        }
         try? FileManager.default.removeItem(at: destination)
         try? FileManager.default.copyItem(at: bundled, to: destination)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destination.path)
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: destination.path
+        )
     }
 
-    private static func detectPython() -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        process.arguments = ["python3"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            if process.terminationStatus == 0 {
-                return "python3"
-            }
-        } catch {}
-
-        return "python"
-    }
-
-    nonisolated private static func removingVibeHUDHooks(from entry: [String: Any]) -> [String: Any]? {
-        guard var entryHooks = entry["hooks"] as? [[String: Any]] else {
-            return entry
+    private static func removeLegacyBridgeFiles() {
+        let legacyFiles = [
+            ClaudePaths.hooksDir.appendingPathComponent("vibe-hud-bridge.py"),
+            ClaudePaths.hooksDir.appendingPathComponent("vibe-hud-tty-bridge.py"),
+            ClaudePaths.claudeDir.appendingPathComponent("bin/claude-vibehud"),
+        ]
+        for file in legacyFiles {
+            try? FileManager.default.removeItem(at: file)
         }
+    }
 
+    private static func loadJSON(
+        at url: URL,
+        fallback: [String: Any] = [:]
+    ) -> [String: Any] {
+        guard let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return fallback
+        }
+        return json
+    }
+
+    private static func writeJSON(_ json: [String: Any], to url: URL) {
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: json,
+            options: [.prettyPrinted, .sortedKeys]
+        ) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    private static var pythonExecutable: String {
+        let candidates = [
+            "/usr/bin/python3",
+            "/opt/homebrew/bin/python3",
+            "/usr/local/bin/python3",
+        ]
+        return candidates.first {
+            FileManager.default.isExecutableFile(atPath: $0)
+        } ?? "python3"
+    }
+
+    nonisolated private static func removingVibeHUDHooks(
+        from entry: [String: Any]
+    ) -> [String: Any]? {
+        guard var entryHooks = entry["hooks"] as? [[String: Any]] else { return entry }
         entryHooks.removeAll(where: isVibeHUDHook)
         guard !entryHooks.isEmpty else { return nil }
-
-        var updatedEntry = entry
-        updatedEntry["hooks"] = entryHooks
-        return updatedEntry
+        var updated = entry
+        updated["hooks"] = entryHooks
+        return updated
     }
 
     nonisolated private static func isVibeHUDHook(_ hook: [String: Any]) -> Bool {
-        let cmd = hook["command"] as? String ?? ""
-        return cmd.contains("vibe-hud-state.py")
+        (hook["command"] as? String)?.contains("vibe-hud-state.py") == true
     }
 
     nonisolated private static func isVibeHUDOpenCodePlugin(_ plugin: String) -> Bool {

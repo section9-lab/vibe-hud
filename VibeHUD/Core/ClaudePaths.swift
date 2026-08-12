@@ -14,9 +14,7 @@ enum ClaudePaths {
     /// Cached resolved directory to avoid filesystem checks on every access
     nonisolated(unsafe) private static var _cachedDir: URL?
 
-    /// Guards reads/writes to _cachedDir — accessed from the main actor
-    /// (UI settings), the ConversationParser actor, and background watcher
-    /// queues, so cross-thread access needs synchronization.
+    /// Guards reads/writes to _cachedDir across UI and hook installation.
     nonisolated private static let cacheLock = NSLock()
 
     /// Root Claude config directory, resolved once and cached.
@@ -54,16 +52,8 @@ enum ClaudePaths {
         claudeDir.appendingPathComponent("hooks")
     }
 
-    nonisolated static var binDir: URL {
-        claudeDir.appendingPathComponent("bin")
-    }
-
     nonisolated static var settingsFile: URL {
         claudeDir.appendingPathComponent("settings.json")
-    }
-
-    nonisolated static var projectsDir: URL {
-        claudeDir.appendingPathComponent("projects")
     }
 
     /// Shell-safe absolute path for hook commands in settings.json.
@@ -71,18 +61,6 @@ enum ClaudePaths {
     /// quoting keeps paths with spaces from being split by the shell.
     nonisolated static var hookScriptShellPath: String {
         shellQuote(claudeDir.appendingPathComponent("hooks/vibe-hud-state.py").path)
-    }
-
-    nonisolated static var bridgeScriptPath: URL {
-        hooksDir.appendingPathComponent("vibe-hud-bridge.py")
-    }
-
-    nonisolated static var bridgeLauncherPath: URL {
-        binDir.appendingPathComponent("claude-vibehud")
-    }
-
-    nonisolated static var bridgeScriptShellPath: String {
-        shellQuote(bridgeScriptPath.path)
     }
 
     /// Invalidate the cached directory so the next access re-resolves.
@@ -185,23 +163,4 @@ enum OpenCodePaths {
         pluginFile.absoluteURL.absoluteString
     }
 
-    nonisolated static var dataDir: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/share/opencode")
-    }
-
-    nonisolated static var storageDir: URL {
-        dataDir.appendingPathComponent("storage")
-    }
-
-    nonisolated static var sessionsDir: URL {
-        storageDir.appendingPathComponent("session")
-    }
-
-    nonisolated static var messagesDir: URL {
-        storageDir.appendingPathComponent("message")
-    }
-
-    nonisolated static var partsDir: URL {
-        storageDir.appendingPathComponent("part")
-    }
 }

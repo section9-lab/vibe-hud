@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
-"""
-VibeHUD Hook
-- Sends session state to VibeHUD.app via Unix socket
-- For Claude PermissionRequest: waits for user decision from the app
-"""
+"""Send lifecycle-only state to VibeHUD without collecting conversation data."""
+
 import json
 import os
 import socket
@@ -12,404 +9,139 @@ import sys
 import time
 
 SOCKET_PATH = "/tmp/vibe-hud.sock"
-TIMEOUT_SECONDS = 300  # 5 minutes for permission decisions
-TTY_BRIDGE_PROTOCOL = "v4"
 VALID_SOURCES = {"claude", "codex", "opencode"}
 
 
-def parse_source_arg():
-    """Read an explicit source from the hook command, matching Vibe Island's approach."""
-    for index, arg in enumerate(sys.argv[1:]):
-        if arg == "--source" and index + 2 <= len(sys.argv[1:]):
-            source = sys.argv[index + 2].strip().lower()
-            return source if source in VALID_SOURCES else None
+def source_from_args(data):
+    args = sys.argv[1:]
+    for index, arg in enumerate(args):
+        if arg == "--source" and index + 1 < len(args):
+            value = args[index + 1].strip().lower()
+            return value if value in VALID_SOURCES else "claude"
         if arg.startswith("--source="):
-            source = arg.split("=", 1)[1].strip().lower()
-            return source if source in VALID_SOURCES else None
-    return None
+            value = arg.split("=", 1)[1].strip().lower()
+            return value if value in VALID_SOURCES else "claude"
+    value = str(data.get("source", "claude")).strip().lower()
+    return value if value in VALID_SOURCES else "claude"
 
 
-def infer_source(data):
-    """Best-effort fallback for older installed hooks that do not pass --source."""
-    explicit = data.get("source")
-    if isinstance(explicit, str) and explicit.strip().lower() in VALID_SOURCES:
-        return explicit.strip().lower()
-
-    if data.get("hook_event_name") in {"PreCompact", "PostCompact", "PermissionRequest", "Notification"}:
-        return "claude"
-
-    transcript_path = data.get("transcript_path")
-    if isinstance(transcript_path, str):
-        lower_path = transcript_path.lower()
-        if "/.codex/" in lower_path:
-            return "codex"
-        if "/.claude/" in lower_path or "/.config/claude/" in lower_path:
-            return "claude"
-
-    return "claude"
-
-
-def get_tty():
-    """Get the TTY of the Claude process (parent)"""
-    # Get parent PID (Claude process)
-    ppid = os.getppid()
-
-    # Try to get TTY from ps command for the parent process
+def process_value(pid, field):
     try:
         result = subprocess.run(
-            ["ps", "-p", str(ppid), "-o", "tty="],
+            ["ps", "-p", str(pid), "-o", f"{field}="],
             capture_output=True,
             text=True,
-            timeout=2
+            timeout=0.5,
         )
-        tty = result.stdout.strip()
-        if tty and tty != "??" and tty != "-":
-            # ps returns just "ttys001", we need "/dev/ttys001"
-            if not tty.startswith("/dev/"):
-                tty = "/dev/" + tty
-            return tty
+        value = result.stdout.strip()
+        return value or None
     except Exception:
+        return None
+
+
+def parent_pid(pid):
+    value = process_value(pid, "ppid")
+    try:
+        return int(value) if value else None
+    except ValueError:
+        return None
+
+
+def terminal_metadata(start_pid):
+    known = {
+        "terminal": "com.apple.Terminal",
+        "iterm": "com.googlecode.iterm2",
+        "ghostty": "com.mitchellh.ghostty",
+        "warp": "dev.warp.Warp-Stable",
+        "wezterm": "com.github.wez.wezterm",
+        "alacritty": "io.alacritty",
+        "kitty": "net.kovidgoyal.kitty",
+    }
+    pid = start_pid
+    for _ in range(16):
+        command = (process_value(pid, "comm") or "").lower()
+        for name, bundle_id in known.items():
+            if name in command:
+                return pid, bundle_id
+        pid = parent_pid(pid)
+        if not pid or pid <= 1:
+            break
+    return None, None
+
+
+def tty_for_process(pid):
+    value = process_value(pid, "tty")
+    if not value or value in {"??", "-"}:
+        return None
+    return value if value.startswith("/dev/") else f"/dev/{value}"
+
+
+def status_for(data):
+    event = data.get("hook_event_name", "")
+    if event == "SessionStart":
+        return "idle"
+    if event in {
+        "UserPromptSubmit",
+        "PreToolUse",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "SubagentStart",
+        "SubagentStop",
+        "PostCompact",
+    }:
+        return "processing"
+    if event == "PreCompact":
+        return "compacting"
+    if event in {"Stop", "StopFailure"}:
+        return "waiting_for_input"
+    if event == "SessionEnd":
+        return "ended"
+    if event == "Notification" and data.get("notification_type") == "idle_prompt":
+        return "waiting_for_input"
+    return None
+
+
+def send_event(event):
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(0.25)
+            client.connect(SOCKET_PATH)
+            client.sendall(json.dumps(event, separators=(",", ":")).encode())
+    except (OSError, TypeError, ValueError):
         pass
-
-    # Fallback: try current process stdin/stdout
-    try:
-        return os.ttyname(sys.stdin.fileno())
-    except (OSError, AttributeError):
-        pass
-    try:
-        return os.ttyname(sys.stdout.fileno())
-    except (OSError, AttributeError):
-        pass
-    return None
-
-
-def get_process_command(pid):
-    """Get process command name for a pid."""
-    try:
-        result = subprocess.run(
-            ["ps", "-p", str(pid), "-o", "comm="],
-            capture_output=True,
-            text=True,
-            timeout=2
-        )
-        cmd = result.stdout.strip()
-        return cmd if cmd else None
-    except Exception:
-        return None
-
-
-def find_terminal_pid(start_pid):
-    """Walk parent chain to find a known terminal process pid."""
-    known = [
-        "Terminal", "iTerm", "iTerm2", "Ghostty", "Warp",
-        "Alacritty", "kitty", "WezTerm", "Hyper", "Tabby"
-    ]
-
-    current = start_pid
-    for _ in range(20):
-        try:
-            result = subprocess.run(
-                ["ps", "-p", str(current), "-o", "ppid=,comm="],
-                capture_output=True,
-                text=True,
-                timeout=2
-            )
-            line = result.stdout.strip()
-            if not line:
-                return None
-            parts = line.split(None, 1)
-            if len(parts) < 2:
-                return None
-            ppid = int(parts[0])
-            comm = parts[1]
-
-            if any(name.lower() in comm.lower() for name in known):
-                return current
-
-            if ppid <= 1:
-                return None
-            current = ppid
-        except Exception:
-            return None
-
-    return None
-
-
-def map_bundle_id(command):
-    """Best-effort mapping from process command to terminal bundle ID."""
-    if not command:
-        return None
-
-    c = command.lower()
-    if "iterm" in c:
-        return "com.googlecode.iterm2"
-    if c.endswith("/terminal") or c == "terminal":
-        return "com.apple.Terminal"
-    if "ghostty" in c:
-        return "com.mitchellh.ghostty"
-    if "warp" in c:
-        return "dev.warp.Warp-Stable"
-    if "wezterm" in c:
-        return "com.github.wez.wezterm"
-    if "alacritty" in c:
-        return "io.alacritty"
-    if "kitty" in c:
-        return "net.kovidgoyal.kitty"
-    if "hyper" in c:
-        return "co.zeit.hyper"
-    return None
-
-
-def send_event(state):
-    """Send event to app, return response if any"""
-    try:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(TIMEOUT_SECONDS)
-        sock.connect(SOCKET_PATH)
-        sock.sendall(json.dumps(state).encode())
-
-        # For permission requests, wait for response
-        if state.get("status") == "waiting_for_approval":
-            response = sock.recv(4096)
-            sock.close()
-            if response:
-                return json.loads(response.decode())
-        else:
-            sock.close()
-
-        return None
-    except (socket.error, OSError, json.JSONDecodeError):
-        return None
-
-
-def bridge_socket_path(session_id):
-    safe = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in (session_id or "unknown"))
-    return f"/tmp/vibe-hud-tty-{TTY_BRIDGE_PROTOCOL}-{safe}.sock"
-
-
-def is_bridge_alive(socket_path):
-    try:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(0.25)
-        sock.connect(socket_path)
-        sock.sendall(json.dumps({"ping": True}).encode())
-        response = sock.recv(32)
-        sock.close()
-        return response.strip() == f"ok-{TTY_BRIDGE_PROTOCOL}".encode()
-    except Exception:
-        return False
-
-
-def ensure_tty_bridge(session_id, tty):
-    """Ensure per-session tty bridge is running and return socket path."""
-    existing = os.environ.get("VIBE_HUD_INPUT_SOCKET")
-    if existing:
-        return existing
-
-    if not tty:
-        return None
-
-    socket_path = bridge_socket_path(session_id)
-    if os.path.exists(socket_path) and is_bridge_alive(socket_path):
-        return socket_path
-
-    script_path = os.path.join(os.path.dirname(__file__), "vibe-hud-tty-bridge.py")
-    if not os.path.exists(script_path):
-        return None
-
-    python_exec = sys.executable or "python3"
-    try:
-        subprocess.Popen(
-            [python_exec, script_path, "--socket", socket_path, "--tty", tty],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            close_fds=True,
-        )
-    except Exception:
-        return None
-
-    for _ in range(8):
-        if os.path.exists(socket_path) and is_bridge_alive(socket_path):
-            return socket_path
-        time.sleep(0.03)
-
-    return None
 
 
 def main():
     try:
         data = json.load(sys.stdin)
-    except json.JSONDecodeError:
-        sys.exit(1)
+    except (json.JSONDecodeError, TypeError):
+        return 1
 
-    source = parse_source_arg() or infer_source(data)
-    session_id = data.get("session_id", "unknown")
-    event = data.get("hook_event_name", "")
-    cwd = data.get("cwd", "")
-    tool_input = data.get("tool_input", {})
+    status = status_for(data)
+    if status is None:
+        return 0
 
-    # Get process info
-    claude_pid = os.getppid()
-    tty = get_tty()
-    terminal_pid = find_terminal_pid(claude_pid)
-    terminal_cmd = get_process_command(terminal_pid) if terminal_pid else None
-    terminal_bundle_id = map_bundle_id(terminal_cmd)
-
-    tmux_env = os.environ.get("TMUX", "")
-    tmux_socket = tmux_env.split(",")[0] if tmux_env else None
-
-    input_socket = ensure_tty_bridge(session_id, tty)
-
-    # Build state object
-    state = {
-        "session_id": session_id,
-        "cwd": cwd,
-        "event": event,
-        "source": source,
-        "pid": claude_pid,
-        "tty": tty,
-        "input_socket": input_socket,
-        "transcript_path": data.get("transcript_path"),
+    agent_pid = os.getppid()
+    terminal_pid, terminal_bundle_id = terminal_metadata(agent_pid)
+    tmux = os.environ.get("TMUX", "")
+    event = {
+        "session_id": data.get("session_id", "unknown"),
+        "cwd": data.get("cwd", ""),
+        "event": data.get("hook_event_name", ""),
+        "status": status,
+        "source": source_from_args(data),
+        "pid": agent_pid,
+        "tty": tty_for_process(agent_pid),
         "terminal_pid": terminal_pid,
         "terminal_bundle_id": terminal_bundle_id,
         "tmux_pane": os.environ.get("TMUX_PANE"),
-        "tmux_socket": tmux_socket,
+        "tmux_socket": tmux.split(",", 1)[0] if tmux else None,
+        "event_sequence": time.time_ns(),
+        "notification_type": data.get("notification_type"),
     }
-
-    # Map events to status
-    if event == "UserPromptSubmit":
-        # User just sent a message - Claude is now processing
-        state["status"] = "processing"
-
-    elif event == "PreToolUse":
-        state["status"] = "running_tool"
-        state["tool"] = data.get("tool_name")
-        state["tool_input"] = tool_input
-        # Send tool_use_id to Swift for caching
-        tool_use_id_from_event = data.get("tool_use_id")
-        if tool_use_id_from_event:
-            state["tool_use_id"] = tool_use_id_from_event
-
-    elif event == "PostToolUse":
-        state["status"] = "processing"
-        state["tool"] = data.get("tool_name")
-        state["tool_input"] = tool_input
-        # Send tool_use_id so Swift can cancel the specific pending permission
-        tool_use_id_from_event = data.get("tool_use_id")
-        if tool_use_id_from_event:
-            state["tool_use_id"] = tool_use_id_from_event
-
-    elif event == "PostToolUseFailure":
-        # Tool errored or was interrupted — main session continues processing
-        state["status"] = "processing"
-        state["tool"] = data.get("tool_name")
-        state["tool_input"] = tool_input
-        state["tool_error"] = data.get("error") or data.get("message")
-        tool_use_id_from_event = data.get("tool_use_id")
-        if tool_use_id_from_event:
-            state["tool_use_id"] = tool_use_id_from_event
-
-    elif event == "PermissionDenied":
-        # Auto-mode classifier denied a tool call — surface to the app so the
-        # user can see what was blocked instead of a silent skip
-        state["status"] = "processing"
-        state["tool"] = data.get("tool_name")
-        state["tool_input"] = tool_input
-        state["denial_reason"] = data.get("reason") or data.get("message")
-
-    elif event == "PermissionRequest":
-        # This is where we can control the permission
-        state["status"] = "waiting_for_approval"
-        state["tool"] = data.get("tool_name")
-        state["tool_input"] = tool_input
-        # tool_use_id lookup handled by Swift-side cache from PreToolUse
-
-        # Send to app and wait for decision
-        response = send_event(state)
-
-        if response:
-            decision = response.get("decision", "ask")
-            reason = response.get("reason", "")
-
-            if decision == "allow":
-                # Output JSON to approve
-                output = {
-                    "hookSpecificOutput": {
-                        "hookEventName": "PermissionRequest",
-                        "decision": {"behavior": "allow"},
-                    }
-                }
-                print(json.dumps(output))
-                sys.exit(0)
-
-            elif decision == "deny":
-                # Output JSON to deny
-                output = {
-                    "hookSpecificOutput": {
-                        "hookEventName": "PermissionRequest",
-                        "decision": {
-                            "behavior": "deny",
-                            "message": reason or "Denied by user via VibeHUD",
-                        },
-                    }
-                }
-                print(json.dumps(output))
-                sys.exit(0)
-
-        # No response or "ask" - let Claude Code show its normal UI
-        sys.exit(0)
-
-    elif event == "Notification":
-        notification_type = data.get("notification_type")
-        # Skip permission_prompt - PermissionRequest hook handles this with better info
-        if notification_type == "permission_prompt":
-            sys.exit(0)
-        elif notification_type == "idle_prompt":
-            state["status"] = "waiting_for_input"
-        else:
-            state["status"] = "notification"
-        state["notification_type"] = notification_type
-        state["message"] = data.get("message")
-
-    elif event == "Stop":
-        state["status"] = "waiting_for_input"
-
-    elif event == "StopFailure":
-        # Turn ended via API error (rate limit, auth, billing). Mark waiting
-        # so the user sees it's done (not stuck), with the error surfaced
-        state["status"] = "waiting_for_input"
-        state["stop_error"] = data.get("error") or data.get("message")
-
-    elif event == "SubagentStart":
-        # A subagent task is beginning — main session is still processing
-        state["status"] = "processing"
-
-    elif event == "SubagentStop":
-        # SubagentStop fires when a subagent completes - main session continues processing
-        state["status"] = "processing"
-
-    elif event == "SessionStart":
-        # New session starts waiting for user input
-        state["status"] = "waiting_for_input"
-
-    elif event == "SessionEnd":
-        state["status"] = "ended"
-
-    elif event == "PreCompact":
-        # Context is being compacted (manual or auto)
-        state["status"] = "compacting"
-
-    elif event == "PostCompact":
-        # Compaction finished — return to processing so UI exits .compacting phase
-        state["status"] = "processing"
-
-    else:
-        state["status"] = "unknown"
-
-    # Send to socket (fire and forget for non-permission events)
-    send_event(state)
+    send_event(event)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
