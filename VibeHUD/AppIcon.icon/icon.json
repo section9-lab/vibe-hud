@@ -1,8 +1,8 @@
 {
   "fill" : {
     "linear-gradient" : [
-      "extended-gray:0.25000,1.00000",
-      "extended-gray:0.00000,1.00000"
+      "display-p3:0.25490,0.26667,0.28627,1.00000",
+      "display-p3:0.05882,0.06667,0.07843,1.00000"
     ],
     "orientation" : {
       "start" : {
@@ -11,7 +11,7 @@
       },
       "stop" : {
         "x" : 0.5,
-        "y" : 0.7
+        "y" : 1
       }
     }
   },
@@ -19,26 +19,26 @@
     {
       "layers" : [
         {
-          "glass" : false,
+          "glass" : true,
           "hidden" : false,
-          "image-name" : "export-3.svg",
-          "name" : "export-3",
+          "image-name" : "glass-panel.svg",
+          "name" : "Glass Panel",
           "position" : {
-            "scale" : 2,
+            "scale" : 1,
             "translation-in-points" : [
               0,
-              -200
+              0
             ]
           }
         }
       ],
       "shadow" : {
         "kind" : "neutral",
-        "opacity" : 0.5
+        "opacity" : 0.38
       },
       "translucency" : {
         "enabled" : true,
-        "value" : 0.5
+        "value" : 0.3
       }
     }
   ],
