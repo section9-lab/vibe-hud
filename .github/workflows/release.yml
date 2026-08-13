@@ -39,7 +39,7 @@ jobs:
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          app_path="build/DerivedData/Build/Products/Release/VibeHUD.app"
+          app_path="build/DerivedData/Build/Products/Release/vibe hud.app"
           tag_version="${TAG_NAME#v}"
           app_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app_path/Contents/Info.plist")
           test "$tag_version" = "$app_version"
@@ -51,7 +51,7 @@ jobs:
           mkdir -p release
           hdiutil create \
             -volname "vibe hud" \
-            -srcfolder "build/DerivedData/Build/Products/Release/VibeHUD.app" \
+            -srcfolder "build/DerivedData/Build/Products/Release/vibe hud.app" \
             -ov \
             -format UDZO \
             "release/vibe-hud-${TAG_NAME}.dmg"
