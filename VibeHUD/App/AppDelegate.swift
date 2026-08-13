@@ -15,6 +15,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let updater: SPUUpdater
     private let userDriver: NotchUserDriver
 
+    @MainActor
     var windowController: NotchWindowController? {
         windowManager?.windowController
     }
@@ -78,7 +79,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ = windowManager?.setupNotchWindow()
 
         screenObserver = ScreenObserver { [weak self] in
-            self?.handleScreenChange()
+            Task { @MainActor in
+                self?.handleScreenChange()
+            }
         }
 
         if updater.canCheckForUpdates {
@@ -92,6 +95,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @MainActor
     private func handleScreenChange() {
         _ = windowManager?.setupNotchWindow()
     }
