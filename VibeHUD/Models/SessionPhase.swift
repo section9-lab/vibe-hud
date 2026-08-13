@@ -98,6 +98,8 @@ enum SessionPhase: Sendable {
         // Idle transitions
         case (.idle, .processing):
             return true
+        case (.idle, .waitingForInput):
+            return true
         case (.idle, .waitingForApproval):
             return true  // Direct permission request on idle session
         case (.idle, .compacting):

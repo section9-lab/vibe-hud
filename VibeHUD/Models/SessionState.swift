@@ -11,6 +11,9 @@ import Foundation
 enum SessionSource: String, Codable, Equatable, Sendable {
     case claude
     case codex
+    case cursor
+    case copilot
+    case pi
     case opencode
 
     nonisolated init(rawSource: String?, transcriptPath: String? = nil) {
@@ -21,6 +24,15 @@ enum SessionSource: String, Codable, Equatable, Sendable {
                 return
             case "codex":
                 self = .codex
+                return
+            case "cursor":
+                self = .cursor
+                return
+            case "copilot", "githubcopilot":
+                self = .copilot
+                return
+            case "pi":
+                self = .pi
                 return
             case "opencode":
                 self = .opencode
@@ -51,6 +63,12 @@ enum SessionSource: String, Codable, Equatable, Sendable {
             "Claude"
         case .codex:
             "Codex"
+        case .cursor:
+            "Cursor"
+        case .copilot:
+            "GitHub Copilot"
+        case .pi:
+            "Pi"
         case .opencode:
             "OpenCode"
         }

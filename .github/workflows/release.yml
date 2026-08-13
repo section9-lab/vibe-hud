@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tests
+        run: |
+          for test_file in tests/*.sh; do
+            bash "$test_file"
+          done
+
+      - name: Build release app
+        run: |
+          xcodebuild \
+            -project VibeHUD.xcodeproj \
+            -scheme VibeHUD \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            -destination "generic/platform=macOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Verify tag version
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          app_path="build/DerivedData/Build/Products/Release/VibeHUD.app"
+          tag_version="${TAG_NAME#v}"
+          app_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app_path/Contents/Info.plist")
+          test "$tag_version" = "$app_version"
+
+      - name: Package DMG
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          mkdir -p release
+          hdiutil create \
+            -volname "vibe hud" \
+            -srcfolder "build/DerivedData/Build/Products/Release/VibeHUD.app" \
+            -ov \
+            -format UDZO \
+            "release/vibe-hud-${TAG_NAME}.dmg"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release/vibe-hud-${{ github.ref_name }}.dmg

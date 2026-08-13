@@ -8,22 +8,17 @@
 import Combine
 import SwiftUI
 
-enum ApprovalSelection: Equatable {
-    case allow
-    case deny
+private struct InstancesContentHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
 
-    mutating func toggle() {
-        self = (self == .allow) ? .deny : .allow
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
 struct ClaudeInstancesView: View {
     @ObservedObject var sessionMonitor: ClaudeSessionMonitor
     @ObservedObject var viewModel: NotchViewModel
-    @State private var focusedSessionId: String?
-    @State private var tapApprovalSelection: ApprovalSelection = .allow
-    @State private var tapApprovalToolId: String?
-    @State private var askFocusIndexByKey: [String: Int] = [:]
     @State private var askSelectedByKey: [String: [Int: Set<String>]] = [:]
 
     var body: some View {
@@ -34,17 +29,8 @@ struct ClaudeInstancesView: View {
                 instancesList
             }
         }
-        .onAppear {
-            syncInteractionTargets()
-        }
-        .onChange(of: sortedInstances) { _, _ in
-            syncInteractionTargets()
-        }
-        .onReceive(EventMonitors.shared.singleTap.receive(on: RunLoop.main)) { _ in
-            handleSingleTap()
-        }
-        .onReceive(EventMonitors.shared.doubleTap.receive(on: RunLoop.main)) { _ in
-            handleDoubleTap()
+        .onPreferenceChange(InstancesContentHeightPreferenceKey.self) {
+            viewModel.updateInstancesContentHeight($0)
         }
     }
 
@@ -60,7 +46,16 @@ struct ClaudeInstancesView: View {
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.25))
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity)
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: InstancesContentHeightPreferenceKey.self,
+                    value: proxy.size.height
+                )
+            }
+        )
     }
 
     // MARK: - Instances List
@@ -100,24 +95,18 @@ struct ClaudeInstancesView: View {
                     VStack(spacing: 6) {
                         InstanceRow(
                             session: session,
-                            onSelect: { focusedSessionId = session.sessionId },
                             onFocus: { focusSession(session) },
                             onChat: { openChat(session) },
                             onArchive: { archiveSession(session) },
                             onApprove: { approveSession(session) },
-                            onReject: { rejectSession(session) },
-                            tapSelectedApproval: tapSelectedApproval(for: session),
-                            isFocusedForTapInput: focusedSessionId == session.sessionId
+                            onReject: { rejectSession(session) }
                         )
 
                         if let questions = askQuestions(for: session), !questions.isEmpty {
                             SessionAskUserQuestionCard(
                                 session: session,
                                 questions: questions,
-                                focusedSessionId: focusedSessionId,
-                                focusIndex: askFocusIndex(for: session, questions: questions),
                                 selectedByQuestion: askSelections(for: session),
-                                onSelectSession: { focusedSessionId = session.sessionId },
                                 onTapOption: { questionIndex, option in
                                     handleAskOptionTap(session: session, questionIndex: questionIndex, option: option)
                                 },
@@ -131,81 +120,16 @@ struct ClaudeInstancesView: View {
                 }
             }
             .padding(.vertical, 4)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: InstancesContentHeightPreferenceKey.self,
+                        value: proxy.size.height
+                    )
+                }
+            )
         }
         .scrollBounceBehavior(.basedOnSize)
-    }
-
-    private func tapControlledSession() -> SessionState? {
-        if let focusedSessionId,
-           let focused = sortedInstances.first(where: { $0.sessionId == focusedSessionId }),
-           focused.phase.isWaitingForApproval {
-            return focused
-        }
-
-        return sortedInstances.first { $0.phase.isWaitingForApproval }
-    }
-
-    private func tapSelectedApproval(for session: SessionState) -> ApprovalSelection? {
-        guard let target = tapControlledSession(),
-              target.pendingToolName != "AskUserQuestion",
-              session.pendingToolId == target.pendingToolId else {
-            return nil
-        }
-        return tapApprovalSelection
-    }
-
-    private func syncInteractionTargets() {
-        guard let target = tapControlledSession() else {
-            focusedSessionId = nil
-            tapApprovalToolId = nil
-            tapApprovalSelection = .allow
-            return
-        }
-
-        focusedSessionId = target.sessionId
-        guard target.pendingToolName != "AskUserQuestion",
-              let toolId = target.pendingToolId else {
-            tapApprovalToolId = nil
-            tapApprovalSelection = .allow
-            return
-        }
-
-        if tapApprovalToolId != toolId {
-            tapApprovalToolId = toolId
-            tapApprovalSelection = .allow
-        }
-    }
-
-    private func handleSingleTap() {
-        guard let target = tapControlledSession() else {
-            print("[TapControl] single tap ignored: no waiting-for-approval target")
-            return
-        }
-        print("[TapControl] single tap target session=\(target.sessionId) tool=\(target.pendingToolName ?? "none")")
-        if target.pendingToolName == "AskUserQuestion" {
-            advanceAskFocus(session: target)
-            return
-        }
-        tapApprovalSelection.toggle()
-    }
-
-    private func handleDoubleTap() {
-        guard let target = tapControlledSession() else {
-            print("[TapControl] double tap ignored: no waiting-for-approval target")
-            return
-        }
-        print("[TapControl] double tap target session=\(target.sessionId) tool=\(target.pendingToolName ?? "none")")
-        if target.pendingToolName == "AskUserQuestion" {
-            commitAskFocusedAction(session: target)
-            return
-        }
-
-        switch tapApprovalSelection {
-        case .allow:
-            approveSession(target)
-        case .deny:
-            rejectSession(target)
-        }
     }
 
     private func askQuestions(for session: SessionState) -> [SessionAskUserQuestionItem]? {
@@ -234,47 +158,6 @@ struct ClaudeInstancesView: View {
     private func askSelections(for session: SessionState) -> [Int: Set<String>] {
         guard let key = askStateKey(for: session) else { return [:] }
         return askSelectedByKey[key] ?? [:]
-    }
-
-    private func askFocusTargets(for session: SessionState, questions: [SessionAskUserQuestionItem]) -> [AskFocusTarget] {
-        SessionAskUserQuestionCard.buildFocusTargets(questions: questions, selected: askSelections(for: session))
-    }
-
-    private func askFocusIndex(for session: SessionState, questions: [SessionAskUserQuestionItem]) -> Int {
-        guard let key = askStateKey(for: session) else { return 0 }
-        let targets = askFocusTargets(for: session, questions: questions)
-        if targets.isEmpty { return 0 }
-        return min(askFocusIndexByKey[key] ?? 0, targets.count - 1)
-    }
-
-    private func advanceAskFocus(session: SessionState) {
-        guard let questions = askQuestions(for: session),
-              let key = askStateKey(for: session) else { return }
-        let targets = askFocusTargets(for: session, questions: questions)
-        guard !targets.isEmpty else { return }
-        let current = min(askFocusIndexByKey[key] ?? 0, targets.count - 1)
-        askFocusIndexByKey[key] = (current + 1) % targets.count
-        print("[TapControl] advanced AskUserQuestion focus session=\(session.sessionId) from=\(current) to=\(askFocusIndexByKey[key] ?? 0)")
-    }
-
-    private func commitAskFocusedAction(session: SessionState) {
-        guard let questions = askQuestions(for: session),
-              let key = askStateKey(for: session) else { return }
-        let targets = askFocusTargets(for: session, questions: questions)
-        guard !targets.isEmpty else { return }
-        let index = min(askFocusIndexByKey[key] ?? 0, targets.count - 1)
-        let target = targets[index]
-        print("[TapControl] commit AskUserQuestion focused action session=\(session.sessionId) index=\(index)")
-        switch target {
-        case .option(let qIdx, let option):
-            handleAskOptionTap(session: session, questionIndex: qIdx, option: option)
-            if !questions[qIdx].multiSelect {
-                askFocusIndexByKey[key] = 0
-            }
-        case .confirm(let qIdx):
-            submitAskSelections(session: session, questionIndex: qIdx, questions: questions)
-            askFocusIndexByKey[key] = 0
-        }
     }
 
     private func handleAskOptionTap(session: SessionState, questionIndex: Int, option: String) {
@@ -361,11 +244,6 @@ struct ClaudeInstancesView: View {
     }
 }
 
-enum AskFocusTarget: Equatable {
-    case option(questionIndex: Int, option: String)
-    case confirm(questionIndex: Int)
-}
-
 struct SessionAskUserQuestionItem {
     let question: String
     let options: [String]
@@ -375,42 +253,9 @@ struct SessionAskUserQuestionItem {
 struct SessionAskUserQuestionCard: View {
     let session: SessionState
     let questions: [SessionAskUserQuestionItem]
-    let focusedSessionId: String?
-    let focusIndex: Int
     let selectedByQuestion: [Int: Set<String>]
-    let onSelectSession: () -> Void
     let onTapOption: (Int, String) -> Void
     let onTapConfirm: (Int) -> Void
-
-    static func buildFocusTargets(
-        questions: [SessionAskUserQuestionItem],
-        selected: [Int: Set<String>]
-    ) -> [AskFocusTarget] {
-        var targets: [AskFocusTarget] = []
-        for (qIdx, item) in questions.enumerated() {
-            for option in item.options {
-                targets.append(.option(questionIndex: qIdx, option: option))
-            }
-            if item.multiSelect && !(selected[qIdx] ?? []).isEmpty {
-                targets.append(.confirm(questionIndex: qIdx))
-            }
-        }
-        return targets
-    }
-
-    private var focusTargets: [AskFocusTarget] {
-        Self.buildFocusTargets(questions: questions, selected: selectedByQuestion)
-    }
-
-    private var clampedFocusIndex: Int {
-        guard !focusTargets.isEmpty else { return 0 }
-        return min(focusIndex, focusTargets.count - 1)
-    }
-
-    private func isFocusedTarget(_ target: AskFocusTarget) -> Bool {
-        guard focusedSessionId == session.sessionId, !focusTargets.isEmpty else { return false }
-        return focusTargets[clampedFocusIndex] == target
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -427,32 +272,26 @@ struct SessionAskUserQuestionCard: View {
 
                     FlowLayout(spacing: 6) {
                         ForEach(item.options, id: \.self) { option in
-                            let target = AskFocusTarget.option(questionIndex: questionIndex, option: option)
                             let isSelected = (selectedByQuestion[questionIndex] ?? []).contains(option)
-                            let isFocused = isFocusedTarget(target)
 
                             Button {
-                                onSelectSession()
                                 onTapOption(questionIndex, option)
                             } label: {
                                 Text(option)
                                     .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor((isSelected || isFocused) ? .black : .white.opacity(0.85))
+                                    .foregroundColor(isSelected ? .black : .white.opacity(0.85))
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 5)
                                     .background(
                                         RoundedRectangle(cornerRadius: 6)
-                                            .fill((isSelected || isFocused) ? Color.white.opacity(0.9) : Color.white.opacity(0.1))
+                                            .fill(isSelected ? Color.white.opacity(0.9) : Color.white.opacity(0.1))
                                     )
                             }
                             .buttonStyle(.plain)
                         }
 
                         if item.multiSelect && !(selectedByQuestion[questionIndex] ?? []).isEmpty {
-                            let target = AskFocusTarget.confirm(questionIndex: questionIndex)
-                            let isFocused = isFocusedTarget(target)
                             Button {
-                                onSelectSession()
                                 onTapConfirm(questionIndex)
                             } label: {
                                 Text("Confirm")
@@ -462,7 +301,7 @@ struct SessionAskUserQuestionCard: View {
                                     .padding(.vertical, 5)
                                     .background(
                                         RoundedRectangle(cornerRadius: 6)
-                                            .fill(isFocused ? Color.white.opacity(0.95) : TerminalColors.amber)
+                                            .fill(TerminalColors.amber)
                                     )
                             }
                             .buttonStyle(.plain)
@@ -475,11 +314,8 @@ struct SessionAskUserQuestionCard: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill((focusedSessionId == session.sessionId) ? Color.white.opacity(0.08) : Color.white.opacity(0.04))
+                .fill(Color.white.opacity(0.04))
         )
-        .onTapGesture {
-            onSelectSession()
-        }
     }
 }
 
@@ -487,14 +323,11 @@ struct SessionAskUserQuestionCard: View {
 
 struct InstanceRow: View {
     let session: SessionState
-    let onSelect: () -> Void
     let onFocus: () -> Void
     let onChat: () -> Void
     let onArchive: () -> Void
     let onApprove: () -> Void
     let onReject: () -> Void
-    let tapSelectedApproval: ApprovalSelection?
-    let isFocusedForTapInput: Bool
 
     @State private var isHovered = false
     @State private var spinnerPhase = 0
@@ -651,8 +484,7 @@ struct InstanceRow: View {
                 InlineApprovalButtons(
                     onChat: onChat,
                     onApprove: onApprove,
-                    onReject: onReject,
-                    selectedAction: tapSelectedApproval ?? .allow
+                    onReject: onReject
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             } else {
@@ -686,17 +518,10 @@ struct InstanceRow: View {
         .onTapGesture(count: 2) {
             onChat()
         }
-        .onTapGesture {
-            onSelect()
-        }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isWaitingForApproval)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    isFocusedForTapInput
-                        ? Color.white.opacity(0.1)
-                        : (isHovered ? Color.white.opacity(0.06) : Color.clear)
-                )
+                .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
         )
         .onHover { isHovered = $0 }
         .task {
@@ -738,6 +563,12 @@ struct InstanceRow: View {
             Color(red: 0.85, green: 0.47, blue: 0.34)
         case .codex:
             Color(red: 122 / 255, green: 157 / 255, blue: 1.0)
+        case .cursor:
+            .purple
+        case .copilot:
+            .cyan
+        case .pi:
+            .mint
         case .opencode:
             .white
         }
@@ -752,7 +583,6 @@ struct InlineApprovalButtons: View {
     let onChat: () -> Void
     let onApprove: () -> Void
     let onReject: () -> Void
-    let selectedAction: ApprovalSelection
 
     @State private var showChatButton = false
     @State private var showDenyButton = false
@@ -772,10 +602,10 @@ struct InlineApprovalButtons: View {
             } label: {
                 Text("Deny")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(selectedAction == .deny ? .black : .white.opacity(0.6))
+                    .foregroundColor(.white.opacity(0.6))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(selectedAction == .deny ? Color.white.opacity(0.9) : Color.white.opacity(0.1))
+                    .background(Color.white.opacity(0.1))
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -787,10 +617,10 @@ struct InlineApprovalButtons: View {
             } label: {
                 Text("Allow")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(selectedAction == .allow ? .black : .white.opacity(0.6))
+                    .foregroundColor(.white.opacity(0.6))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(selectedAction == .allow ? Color.white.opacity(0.9) : Color.white.opacity(0.1))
+                    .background(Color.white.opacity(0.1))
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)

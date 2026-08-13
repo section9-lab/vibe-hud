@@ -13,14 +13,22 @@ import SwiftUI
 
 // MARK: - NotchMenuView
 
+private struct MenuContentHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct NotchMenuView: View {
     @ObservedObject var viewModel: NotchViewModel
     @ObservedObject private var updateManager = UpdateManager.shared
     @ObservedObject private var screenSelector = ScreenSelector.shared
     @ObservedObject private var soundSelector = SoundSelector.shared
-    @State private var hooksInstalled: Bool = false
+    @State private var hookStates: [HookAgent: Bool] = [:]
+    @State private var isHooksExpanded: Bool = false
     @State private var launchAtLogin: Bool = false
-    @State private var sensorHelperStatus: SMAppService.Status = .notRegistered
 
     var body: some View {
         // ScrollView so the menu gracefully scrolls when content exceeds the
@@ -42,10 +50,6 @@ struct NotchMenuView: View {
                 // Appearance settings
                 ScreenPickerRow(screenSelector: screenSelector)
                 SoundPickerRow(soundSelector: soundSelector)
-                SensorHelperSensitivityRow(status: sensorHelperStatus) {
-                    handleSensorHelperAction()
-                }
-                ClaudeDirPickerRow()
 
                 Divider()
                     .background(Color.white.opacity(0.08))
@@ -70,17 +74,53 @@ struct NotchMenuView: View {
                     }
                 }
 
-                MenuToggleRow(
-                    icon: "arrow.triangle.2.circlepath",
-                    label: "Hooks",
-                    isOn: hooksInstalled
-                ) {
-                    if hooksInstalled {
-                        HookInstaller.uninstall()
-                        hooksInstalled = false
-                    } else {
-                        HookInstaller.installIfNeeded()
-                        hooksInstalled = true
+                Button {
+                    isHooksExpanded.toggle()
+                    viewModel.hookListExpanded = isHooksExpanded
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.7))
+                            .frame(width: 16)
+
+                        Text("Agent Hooks")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+
+                        Spacer()
+
+                        Image(systemName: isHooksExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.white.opacity(0.04))
+                    )
+                }
+                .buttonStyle(.plain)
+
+                if isHooksExpanded {
+                    MenuToggleRow(icon: "sparkles", label: "Claude", isOn: hookState(for: .claude), isNested: true) {
+                        toggleHook(.claude)
+                    }
+                    MenuToggleRow(icon: "terminal", label: "Codex", isOn: hookState(for: .codex), isNested: true) {
+                        toggleHook(.codex)
+                    }
+                    MenuToggleRow(icon: "cursorarrow.rays", label: "Cursor", isOn: hookState(for: .cursor), isNested: true) {
+                        toggleHook(.cursor)
+                    }
+                    MenuToggleRow(icon: "chevron.left.forwardslash.chevron.right", label: "GitHub Copilot", isOn: hookState(for: .githubCopilot), isNested: true) {
+                        toggleHook(.githubCopilot)
+                    }
+                    MenuToggleRow(icon: "circle.hexagongrid", label: "Pi", isOn: hookState(for: .pi), isNested: true) {
+                        toggleHook(.pi)
+                    }
+                    MenuToggleRow(icon: "chevron.left.forwardslash.chevron.right", label: "OpenCode", isOn: hookState(for: .openCode), isNested: true) {
+                        toggleHook(.openCode)
                     }
                 }
 
@@ -116,9 +156,21 @@ struct NotchMenuView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: MenuContentHeightPreferenceKey.self,
+                        value: proxy.size.height
+                    )
+                }
+            )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onPreferenceChange(MenuContentHeightPreferenceKey.self) {
+            viewModel.updateMenuContentHeight($0)
+        }
         .onAppear {
+            isHooksExpanded = viewModel.hookListExpanded
             refreshStates()
         }
         .onChange(of: viewModel.contentType) { _, newValue in
@@ -134,30 +186,24 @@ struct NotchMenuView: View {
     }
 
     private func refreshStates() {
-        hooksInstalled = HookInstaller.isInstalled()
+        hookStates = Dictionary(uniqueKeysWithValues: HookAgent.allCases.map {
+            ($0, HookInstaller.isInstalled($0))
+        })
         launchAtLogin = SMAppService.mainApp.status == .enabled
-        sensorHelperStatus = SensorPrivilegedHelperManager.shared.status
         screenSelector.refreshScreens()
     }
 
-    private func handleSensorHelperAction() {
-        func installHelper() {
-            DispatchQueue.global(qos: .userInitiated).async {
-                _ = SensorPrivilegedHelperManager.shared.installHelper()
-                DispatchQueue.main.async { refreshStates() }
-            }
-        }
+    private func hookState(for agent: HookAgent) -> Bool {
+        hookStates[agent, default: false]
+    }
 
-        switch sensorHelperStatus {
-        case .enabled:
-            refreshStates()
-        case .requiresApproval:
-            SensorPrivilegedHelperManager.shared.openApprovalSettings()
-        case .notRegistered, .notFound:
-            installHelper()
-        @unknown default:
-            installHelper()
+    private func toggleHook(_ agent: HookAgent) {
+        if hookState(for: agent) {
+            HookInstaller.uninstall(agent)
+        } else {
+            HookInstaller.install(agent)
         }
+        hookStates[agent] = HookInstaller.isInstalled(agent)
     }
 }
 
@@ -480,122 +526,6 @@ struct AccessibilityRow: View {
     }
 }
 
-struct SensorHelperSensitivityRow: View {
-    let status: SMAppService.Status
-    let action: () -> Void
-
-    @State private var isHovered = false
-    @State private var isEnabled: Bool = AppSettings.vibrationTapEnabled
-    @State private var sensitivityLevel: Double = AppSettings.vibrationSensitivityLevel
-
-    var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 10) {
-                Image(systemName: "waveform.path.badge.plus")
-                    .font(.system(size: 12))
-                    .foregroundColor(textColor)
-                    .frame(width: 16)
-
-                Text("Sensor Helper")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(textColor)
-
-                Spacer()
-
-                switch status {
-                case .enabled:
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(isEnabled ? TerminalColors.green : Color.white.opacity(0.3))
-                            .frame(width: 6, height: 6)
-
-                        Toggle("", isOn: $isEnabled)
-                            .toggleStyle(.switch)
-                            .labelsHidden()
-                            .scaleEffect(0.75)
-                            .onChange(of: isEnabled) { _, value in
-                                AppSettings.vibrationTapEnabled = value
-                                SensorServiceClient.shared.sendCurrentSensitivity()
-                            }
-                    }
-                case .requiresApproval:
-                    statusButton("Approve")
-                case .notRegistered, .notFound:
-                    statusButton("Enable")
-                @unknown default:
-                    statusButton("Retry")
-                }
-            }
-
-            if status == .enabled && isEnabled {
-                HStack(spacing: 8) {
-                    Text("Sensitivity")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.55))
-
-                    Slider(value: $sensitivityLevel, in: 0...1)
-                        .tint(.white.opacity(0.9))
-                        .onChange(of: sensitivityLevel) { _, value in
-                            AppSettings.vibrationSensitivityLevel = value
-                            SensorServiceClient.shared.sendCurrentSensitivity()
-                        }
-
-                    Text("High")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.65))
-                }
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
-        )
-        .onHover { isHovered = $0 }
-        .onAppear {
-            isEnabled = AppSettings.vibrationTapEnabled
-            sensitivityLevel = AppSettings.vibrationSensitivityLevel
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-        ) { _ in
-            isEnabled = AppSettings.vibrationTapEnabled
-            sensitivityLevel = AppSettings.vibrationSensitivityLevel
-        }
-    }
-
-    private var textColor: Color {
-        switch status {
-        case .requiresApproval:
-            return TerminalColors.amber
-        case .notRegistered, .notFound:
-            return .white.opacity(isHovered ? 1.0 : 0.7)
-        case .enabled:
-            return .white.opacity(isHovered ? 1.0 : 0.7)
-        @unknown default:
-            return Color(red: 1.0, green: 0.4, blue: 0.4)
-        }
-    }
-
-    @ViewBuilder
-    private func statusButton(_ title: String) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.black)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.white)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-
-}
-
 struct MenuRow: View {
     let icon: String
     let label: String
@@ -642,9 +572,24 @@ struct MenuToggleRow: View {
     let icon: String
     let label: String
     let isOn: Bool
+    let isNested: Bool
     let action: () -> Void
 
     @State private var isHovered = false
+
+    init(
+        icon: String,
+        label: String,
+        isOn: Bool,
+        isNested: Bool = false,
+        action: @escaping () -> Void
+    ) {
+        self.icon = icon
+        self.label = label
+        self.isOn = isOn
+        self.isNested = isNested
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
@@ -677,6 +622,7 @@ struct MenuToggleRow: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
+        .padding(.leading, isNested ? 16 : 0)
         .onHover { isHovered = $0 }
     }
 

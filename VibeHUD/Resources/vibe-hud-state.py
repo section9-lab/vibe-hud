@@ -14,7 +14,19 @@ import time
 SOCKET_PATH = "/tmp/vibe-hud.sock"
 TIMEOUT_SECONDS = 300  # 5 minutes for permission decisions
 TTY_BRIDGE_PROTOCOL = "v4"
-VALID_SOURCES = {"claude", "codex", "opencode"}
+VALID_SOURCES = {"claude", "codex", "cursor", "copilot", "pi", "opencode"}
+
+EVENT_ALIASES = {
+    "sessionStart": "SessionStart",
+    "sessionEnd": "SessionEnd",
+    "beforeSubmitPrompt": "UserPromptSubmit",
+    "preToolUse": "PreToolUse",
+    "postToolUse": "PostToolUse",
+    "postToolUseFailure": "PostToolUseFailure",
+    "agentStop": "Stop",
+    "stop": "Stop",
+    "afterAgentResponse": "Stop",
+}
 
 
 def parse_source_arg():
@@ -244,9 +256,9 @@ def main():
         sys.exit(1)
 
     source = parse_source_arg() or infer_source(data)
-    session_id = data.get("session_id", "unknown")
-    event = data.get("hook_event_name", "")
-    cwd = data.get("cwd", "")
+    session_id = data.get("session_id") or data.get("conversation_id") or "unknown"
+    event = EVENT_ALIASES.get(data.get("hook_event_name", ""), data.get("hook_event_name", ""))
+    cwd = data.get("cwd") or next(iter(data.get("workspace_roots", [])), "")
     tool_input = data.get("tool_input", {})
 
     # Get process info

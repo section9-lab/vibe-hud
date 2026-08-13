@@ -31,8 +31,8 @@ class ClaudeSessionMonitor: ObservableObject {
     // MARK: - Monitoring Lifecycle
 
     func startMonitoring() {
-        // Start periodic status rechecking
         Task {
+            await SessionStore.shared.recoverCodexSessions()
             await SessionStore.shared.startPeriodicStatusCheck()
         }
 

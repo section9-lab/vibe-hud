@@ -25,9 +25,28 @@ struct SessionSourceIcon: View {
             ClaudeCrabIcon(size: size, animateLegs: animate)
         case .codex:
             CodexIcon(size: size)
+        case .cursor:
+            AgentSymbolIcon(symbol: "cursorarrow.rays", size: size, color: .purple)
+        case .copilot:
+            AgentSymbolIcon(symbol: "chevron.left.forwardslash.chevron.right", size: size, color: .cyan)
+        case .pi:
+            AgentSymbolIcon(symbol: "circle.hexagongrid", size: size, color: .mint)
         case .opencode:
             OpenCodeIcon(size: size)
         }
+    }
+}
+
+private struct AgentSymbolIcon: View {
+    let symbol: String
+    let size: CGFloat
+    let color: Color
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.8, weight: .semibold))
+            .foregroundColor(color)
+            .frame(width: size, height: size)
     }
 }
 

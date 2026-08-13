@@ -7,63 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		16AFB1992F8EA5AD003AEAA2 /* AppleSPUAccelerometer in Frameworks */ = {isa = PBXBuildFile; productRef = 16AFB1982F8EA5AD003AEAA2 /* AppleSPUAccelerometer */; };
-		F1A10000BBBBBBBBBBBBBBBB /* AppleSPUAccelerometer in Frameworks */ = {isa = PBXBuildFile; productRef = F1A10000CCCCCCCCCCCCCCCC /* AppleSPUAccelerometer */; };
-		F1A10000DDDDDDDDDDDDDDDD /* com.section9-lab.VibeHUD.SensorHelper in CopyFiles */ = {isa = PBXBuildFile; fileRef = F1A100001111111111111111 /* com.section9-lab.VibeHUD.SensorHelper */; };
-		F1A100011111111111111111 /* SensorHelper/com.section9-lab.VibeHUD.SensorHelper.plist in CopyFiles */ = {isa = PBXBuildFile; fileRef = F1A100012222222222222222 /* SensorHelper/com.section9-lab.VibeHUD.SensorHelper.plist */; };
 		FD0F42E72EE7ABA400980302 /* Mixpanel in Frameworks */ = {isa = PBXBuildFile; productRef = FD0F42E62EE7ABA400980302 /* Mixpanel */; };
 		FDA49F7D2EE11E3C00F9612E /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = FD33FD722EDF32D7002A6548 /* Markdown */; };
 		FDA49F7E2EE11E3C00F9612E /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = FDA49F7F2EE11E3C00F9612E /* Sparkle */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-		F1A10000ABABABABABABABAB /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = FD33FD552EDF32D7002A6548 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = F1A100004444444444444444;
-			remoteInfo = VibeHUDSensorHelper;
-		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		F1A10000EEEEEEEEEEEEEEEE /* CopyFiles */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = Contents/Library/LaunchServices;
-			dstSubfolderSpec = 1;
-			files = (
-				F1A10000DDDDDDDDDDDDDDDD /* com.section9-lab.VibeHUD.SensorHelper in CopyFiles */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		F1A100013333333333333333 /* CopyFiles */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = Contents/Library/LaunchDaemons;
-			dstSubfolderSpec = 1;
-			files = (
-				F1A100011111111111111111 /* SensorHelper/com.section9-lab.VibeHUD.SensorHelper.plist in CopyFiles */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFileReference section */
-		F1A100001111111111111111 /* com.section9-lab.VibeHUD.SensorHelper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "com.section9-lab.VibeHUD.SensorHelper"; sourceTree = BUILT_PRODUCTS_DIR; };
-		F1A100012222222222222222 /* SensorHelper/com.section9-lab.VibeHUD.SensorHelper.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "SensorHelper/com.section9-lab.VibeHUD.SensorHelper.plist"; sourceTree = SOURCE_ROOT; };
 		FD33FD5D2EDF32D7002A6548 /* VibeHUD.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VibeHUD.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		F1A100003333333333333333 /* Exceptions for "SensorHelper" folder in "VibeHUDSensorHelper" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				"com.section9-lab.VibeHUD.SensorHelper.plist",
-				Info.plist,
-			);
-			target = F1A100004444444444444444 /* VibeHUDSensorHelper */;
-		};
 		FD33FD702EDF32D7002A6548 /* Exceptions for "VibeHUD" folder in "VibeHUD" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -74,14 +27,6 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		F1A100002222222222222222 /* SensorHelper */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				F1A100003333333333333333 /* Exceptions for "SensorHelper" folder in "VibeHUDSensorHelper" target */,
-			);
-			path = SensorHelper;
-			sourceTree = "<group>";
-		};
 		FD33FD5F2EDF32D7002A6548 /* VibeHUD */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -93,21 +38,12 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		F1A100005555555555555555 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				F1A10000BBBBBBBBBBBBBBBB /* AppleSPUAccelerometer in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		FD33FD5A2EDF32D7002A6548 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				FD0F42E72EE7ABA400980302 /* Mixpanel in Frameworks */,
 				FDA49F7D2EE11E3C00F9612E /* Markdown in Frameworks */,
-				16AFB1992F8EA5AD003AEAA2 /* AppleSPUAccelerometer in Frameworks */,
 				FDA49F7E2EE11E3C00F9612E /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -115,28 +51,17 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		1607B9CB2F8FD6B6006E3D44 /* Recovered References */ = {
-			isa = PBXGroup;
-			children = (
-				F1A100012222222222222222 /* SensorHelper/com.section9-lab.VibeHUD.SensorHelper.plist */,
-			);
-			name = "Recovered References";
-			sourceTree = "<group>";
-		};
 		FD33FD542EDF32D7002A6548 = {
 			isa = PBXGroup;
 			children = (
-				F1A100002222222222222222 /* SensorHelper */,
 				FD33FD5F2EDF32D7002A6548 /* VibeHUD */,
 				FD33FD5E2EDF32D7002A6548 /* Products */,
-				1607B9CB2F8FD6B6006E3D44 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
 		FD33FD5E2EDF32D7002A6548 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				F1A100001111111111111111 /* com.section9-lab.VibeHUD.SensorHelper */,
 				FD33FD5D2EDF32D7002A6548 /* VibeHUD.app */,
 			);
 			name = Products;
@@ -145,29 +70,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		F1A100004444444444444444 /* VibeHUDSensorHelper */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = F1A100008888888888888888 /* Build configuration list for PBXNativeTarget "VibeHUDSensorHelper" */;
-			buildPhases = (
-				F1A100006666666666666666 /* Sources */,
-				F1A100005555555555555555 /* Frameworks */,
-				F1A100007777777777777777 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				F1A100002222222222222222 /* SensorHelper */,
-			);
-			name = VibeHUDSensorHelper;
-			packageProductDependencies = (
-				F1A10000CCCCCCCCCCCCCCCC /* AppleSPUAccelerometer */,
-			);
-			productName = "com.section9-lab.VibeHUD.SensorHelper";
-			productReference = F1A100001111111111111111 /* com.section9-lab.VibeHUD.SensorHelper */;
-			productType = "com.apple.product-type.tool";
-		};
 		FD33FD5C2EDF32D7002A6548 /* VibeHUD */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = FD33FD682EDF32D8002A6548 /* Build configuration list for PBXNativeTarget "VibeHUD" */;
@@ -175,13 +77,10 @@
 				FD33FD592EDF32D7002A6548 /* Sources */,
 				FD33FD5A2EDF32D7002A6548 /* Frameworks */,
 				FD33FD5B2EDF32D7002A6548 /* Resources */,
-				F1A100013333333333333333 /* CopyFiles */,
-				F1A10000EEEEEEEEEEEEEEEE /* CopyFiles */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				F1A10000FFFFFFFFFFFFFFFF /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				FD33FD5F2EDF32D7002A6548 /* VibeHUD */,
@@ -191,7 +90,6 @@
 				FD33FD722EDF32D7002A6548 /* Markdown */,
 				FDA49F7F2EE11E3C00F9612E /* Sparkle */,
 				FD0F42E62EE7ABA400980302 /* Mixpanel */,
-				16AFB1982F8EA5AD003AEAA2 /* AppleSPUAccelerometer */,
 			);
 			productName = VibeHUD;
 			productReference = FD33FD5D2EDF32D7002A6548 /* VibeHUD.app */;
@@ -207,9 +105,6 @@
 				LastSwiftUpdateCheck = 2610;
 				LastUpgradeCheck = 2610;
 				TargetAttributes = {
-					F1A100004444444444444444 = {
-						CreatedOnToolsVersion = 26.1.1;
-					};
 					FD33FD5C2EDF32D7002A6548 = {
 						CreatedOnToolsVersion = 26.1.1;
 					};
@@ -228,27 +123,18 @@
 				FD33FD712EDF32D7002A6548 /* XCRemoteSwiftPackageReference "swift-markdown" */,
 				FDA49F802EE11E3C00F9612E /* XCRemoteSwiftPackageReference "Sparkle" */,
 				FD0F42E52EE7ABA400980302 /* XCRemoteSwiftPackageReference "mixpanel-swift" */,
-				16AFB1972F8EA5AD003AEAA2 /* XCRemoteSwiftPackageReference "AppleSPUAccelerometer" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FD33FD5E2EDF32D7002A6548 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				F1A100004444444444444444 /* VibeHUDSensorHelper */,
 				FD33FD5C2EDF32D7002A6548 /* VibeHUD */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		F1A100007777777777777777 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		FD33FD5B2EDF32D7002A6548 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -259,13 +145,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		F1A100006666666666666666 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		FD33FD592EDF32D7002A6548 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -275,65 +154,7 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		F1A10000FFFFFFFFFFFFFFFF /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = F1A100004444444444444444 /* VibeHUDSensorHelper */;
-			targetProxy = F1A10000ABABABABABABABAB /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin XCBuildConfiguration section */
-		F1A100009999999999999999 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
-				DEVELOPMENT_TEAM = YP86S77K2X;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = SensorHelper/Info.plist;
-				INSTALL_PATH = /Library/PrivilegedHelperTools;
-				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.3.2;
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-sectcreate",
-					__TEXT,
-					__info_plist,
-					"$(PROJECT_DIR)/SensorHelper/Info.plist",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.section9lab.VibeHUD.SensorHelper;
-				PRODUCT_NAME = "com.section9-lab.VibeHUD.SensorHelper";
-				SKIP_INSTALL = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Debug;
-		};
-		F1A10000AAAAAAAAAAAAAAAA /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
-				DEVELOPMENT_TEAM = YP86S77K2X;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = SensorHelper/Info.plist;
-				INSTALL_PATH = /Library/PrivilegedHelperTools;
-				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 1.3.2;
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-sectcreate",
-					__TEXT,
-					__info_plist,
-					"$(PROJECT_DIR)/SensorHelper/Info.plist",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.section9lab.VibeHUD.SensorHelper;
-				PRODUCT_NAME = "com.section9-lab.VibeHUD.SensorHelper";
-				SKIP_INSTALL = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
 		FD33FD662EDF32D8002A6548 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -481,7 +302,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.2;
+				MARKETING_VERSION = 1.3.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.section9lab.VibeHUD;
 				PRODUCT_NAME = VibeHUD;
 				REGISTER_APP_GROUPS = YES;
@@ -517,7 +338,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.2;
+				MARKETING_VERSION = 1.3.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.section9lab.VibeHUD;
 				PRODUCT_NAME = VibeHUD;
 				REGISTER_APP_GROUPS = YES;
@@ -533,15 +354,6 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		F1A100008888888888888888 /* Build configuration list for PBXNativeTarget "VibeHUDSensorHelper" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				F1A100009999999999999999 /* Debug */,
-				F1A10000AAAAAAAAAAAAAAAA /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		FD33FD582EDF32D7002A6548 /* Build configuration list for PBXProject "VibeHUD" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -563,14 +375,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		16AFB1972F8EA5AD003AEAA2 /* XCRemoteSwiftPackageReference "AppleSPUAccelerometer" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/section9-lab/AppleSPUAccelerometer";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
 		FD0F42E52EE7ABA400980302 /* XCRemoteSwiftPackageReference "mixpanel-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/mixpanel/mixpanel-swift";
@@ -598,16 +402,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		16AFB1982F8EA5AD003AEAA2 /* AppleSPUAccelerometer */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 16AFB1972F8EA5AD003AEAA2 /* XCRemoteSwiftPackageReference "AppleSPUAccelerometer" */;
-			productName = AppleSPUAccelerometer;
-		};
-		F1A10000CCCCCCCCCCCCCCCC /* AppleSPUAccelerometer */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 16AFB1972F8EA5AD003AEAA2 /* XCRemoteSwiftPackageReference "AppleSPUAccelerometer" */;
-			productName = AppleSPUAccelerometer;
-		};
 		FD0F42E62EE7ABA400980302 /* Mixpanel */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = FD0F42E52EE7ABA400980302 /* XCRemoteSwiftPackageReference "mixpanel-swift" */;

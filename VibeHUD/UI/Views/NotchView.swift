@@ -23,7 +23,7 @@ struct NotchView: View {
     @State private var previousPendingIds: Set<String> = []
     @State private var previousWaitingForInputIds: Set<String> = []
     @State private var waitingForInputTimestamps: [String: Date] = [:]  // sessionId -> when it entered waitingForInput
-    @State private var isVisible: Bool = false
+    @State private var isVisible: Bool = true
     @State private var isHovering: Bool = false
     @State private var isBouncing: Bool = false
 
@@ -85,13 +85,7 @@ struct NotchView: View {
         // Expand for processing activity
         if activityCoordinator.expandingActivity.show {
             switch activityCoordinator.expandingActivity.type {
-            case .claude:
-                let baseWidth = 2 * max(0, closedNotchSize.height - 12) + 20
-                return baseWidth + permissionIndicatorWidth
-            case .codex:
-                let baseWidth = 2 * max(0, closedNotchSize.height - 12) + 20
-                return baseWidth + permissionIndicatorWidth
-            case .opencode:
+            case .claude, .codex, .cursor, .copilot, .pi, .opencode:
                 let baseWidth = 2 * max(0, closedNotchSize.height - 12) + 20
                 return baseWidth + permissionIndicatorWidth
             case .none:
@@ -186,6 +180,7 @@ struct NotchView: View {
                         maxHeight: viewModel.status == .opened ? notchSize.height : nil,
                         alignment: .top
                     )
+                    .offset(x: closedNotchOffset)
                     .animation(viewModel.status == .opened ? openAnimation : closeAnimation, value: viewModel.status)
                     .animation(openAnimation, value: notchSize) // Animate container size changes between content types
                     .animation(.smooth, value: activityCoordinator.expandingActivity)
@@ -210,10 +205,6 @@ struct NotchView: View {
         .preferredColorScheme(.dark)
         .onAppear {
             sessionMonitor.startMonitoring()
-            // On non-notched devices, keep visible so users have a target to interact with
-            if !viewModel.hasPhysicalNotch {
-                isVisible = true
-            }
         }
         .onChange(of: viewModel.status) { oldStatus, newStatus in
             handleStatusChange(from: oldStatus, to: newStatus)
@@ -233,9 +224,9 @@ struct NotchView: View {
         activityCoordinator.expandingActivity.show && activityCoordinator.expandingActivity.type != .none
     }
 
-    /// Whether to show the expanded closed state (processing, pending permission, or waiting for input)
+    /// Keep a persistent status icon visible while the notch is closed.
     private var showClosedActivity: Bool {
-        isProcessing || hasPendingPermission || hasWaitingForInput
+        true
     }
 
     @ViewBuilder
@@ -298,27 +289,18 @@ struct NotchView: View {
                     .frame(width: closedNotchSize.width - cornerRadiusInsets.closed.top + (isBouncing ? 16 : 0))
             }
 
-            // Right side - spinner when processing/pending, checkmark when waiting for input
-            if showClosedActivity {
-                if isProcessing || hasPendingPermission {
-                    ProcessingSpinner()
-                        .matchedGeometryEffect(id: "spinner", in: activityNamespace, isSource: showClosedActivity)
-                        .frame(width: viewModel.status == .opened ? 20 : sideWidth)
-                        .padding(.trailing, viewModel.status == .opened ? 0 : 4)
-                } else if hasWaitingForInput {
-                    // Checkmark for waiting-for-input on the right side
-                    ReadyForInputIndicatorIcon(size: 14, color: TerminalColors.green)
-                        .matchedGeometryEffect(id: "spinner", in: activityNamespace, isSource: showClosedActivity)
-                        .frame(width: viewModel.status == .opened ? 20 : sideWidth)
-                        .padding(.trailing, viewModel.status == .opened ? 0 : 4)
-                }
-            }
         }
         .frame(height: closedNotchSize.height)
     }
 
     private var sideWidth: CGFloat {
-        max(0, closedNotchSize.height - 12) + 10
+        24
+    }
+
+    /// Keep the closed state's right edge aligned with the physical notch.
+    private var closedNotchOffset: CGFloat {
+        guard viewModel.status != .opened else { return 0 }
+        return -(sideWidth + (hasPendingPermission ? 18 : 0)) / 2
     }
 
     // MARK: - Opened Header Content
@@ -405,16 +387,6 @@ struct NotchView: View {
         } else {
             // Hide activity when done
             activityCoordinator.hideActivity()
-
-            // Delay hiding the notch until animation completes
-            // Don't hide on non-notched devices - users need a visible target
-            if viewModel.status == .closed && viewModel.hasPhysicalNotch {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    if !isAnyProcessing && !hasPendingPermission && !hasWaitingForInput && viewModel.status == .closed {
-                        isVisible = false
-                    }
-                }
-            }
         }
     }
 
@@ -427,13 +399,7 @@ struct NotchView: View {
                 waitingForInputTimestamps.removeAll()
             }
         case .closed:
-            // Don't hide on non-notched devices - users need a visible target
-            guard viewModel.hasPhysicalNotch else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                if viewModel.status == .closed && !isAnyProcessing && !hasPendingPermission && !hasWaitingForInput && !activityCoordinator.expandingActivity.show {
-                    isVisible = false
-                }
-            }
+            break
         }
     }
 
@@ -542,6 +508,12 @@ struct NotchView: View {
             .claude
         case .codex:
             .codex
+        case .cursor:
+            .cursor
+        case .copilot:
+            .copilot
+        case .pi:
+            .pi
         case .opencode:
             .opencode
         }

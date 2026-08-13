@@ -39,18 +39,25 @@ enum NotchContentType: Equatable {
 
 @MainActor
 class NotchViewModel: ObservableObject {
+    private static let maximumVisibleSessionCount = 5
+    private static let estimatedSessionRowHeight: CGFloat = 54
+    private static let maximumInstancesContentHeight =
+        CGFloat(maximumVisibleSessionCount) * estimatedSessionRowHeight + 8
+
     // MARK: - Published State
 
     @Published var status: NotchStatus = .closed
     @Published var openReason: NotchOpenReason = .unknown
     @Published var contentType: NotchContentType = .instances
     @Published var isHovering: Bool = false
+    @Published var hookListExpanded: Bool = false
+    @Published private(set) var menuContentHeight: CGFloat = 420
+    @Published private(set) var instancesContentHeight: CGFloat = 80
 
     // MARK: - Dependencies
 
     private let screenSelector = ScreenSelector.shared
     private let soundSelector = SoundSelector.shared
-    private let claudeDirSelector = ClaudeDirSelector.shared
 
     // MARK: - Geometry
 
@@ -68,24 +75,18 @@ class NotchViewModel: ObservableObject {
         case .chat:
             // Large size for chat view
             return CGSize(
-                width: min(screenRect.width * 0.5, 600),
+                width: min(screenRect.width * 0.4, 480),
                 height: 580
             )
         case .menu:
-            // Base height covers all static rows (Back, 3 picker rows, 3 toggles,
-            // Accessibility, Update, GitHub, Quit + 4 dividers + padding).
-            // Picker expansion deltas added on top when expanded.
             return CGSize(
-                width: min(screenRect.width * 0.4, 480),
-                height: 540
-                    + screenSelector.expandedPickerHeight
-                    + soundSelector.expandedPickerHeight
-                    + claudeDirSelector.expandedPickerHeight
+                width: min(screenRect.width * 0.32, 384),
+                height: min(windowHeight, deviceNotchRect.height + 12 + menuContentHeight)
             )
         case .instances:
             return CGSize(
-                width: min(screenRect.width * 0.4, 480),
-                height: 320
+                width: min(screenRect.width * 0.32, 384),
+                height: min(windowHeight, deviceNotchRect.height + 12 + instancesContentHeight)
             )
         }
     }
@@ -125,9 +126,17 @@ class NotchViewModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
-        claudeDirSelector.$isPickerExpanded
-            .sink { [weak self] _ in self?.objectWillChange.send() }
-            .store(in: &cancellables)
+    }
+
+    func updateMenuContentHeight(_ height: CGFloat) {
+        guard abs(menuContentHeight - height) > 0.5 else { return }
+        menuContentHeight = height
+    }
+
+    func updateInstancesContentHeight(_ height: CGFloat) {
+        let cappedHeight = min(height, Self.maximumInstancesContentHeight)
+        guard abs(instancesContentHeight - cappedHeight) > 0.5 else { return }
+        instancesContentHeight = cappedHeight
     }
 
     // MARK: - Event Handling
@@ -266,6 +275,7 @@ class NotchViewModel: ObservableObject {
         }
         status = .closed
         contentType = .instances
+        hookListExpanded = false
     }
 
     func notchPop() {
@@ -279,7 +289,14 @@ class NotchViewModel: ObservableObject {
     }
 
     func toggleMenu() {
-        contentType = contentType == .menu ? .instances : .menu
+        if contentType == .menu {
+            hookListExpanded = false
+            menuContentHeight = 420
+            contentType = .instances
+        } else {
+            menuContentHeight = 420
+            contentType = .menu
+        }
     }
 
     func showChat(for session: SessionState) {

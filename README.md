@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="VibeHUD/AppIcon.icon/vibe-hud.png" alt="VibeHUD icon" width="120" height="120">
-  <h1 align="center">VibeHUD</h1>
+  <img src="VibeHUD/AppIcon.icon/vibe-hud.png" alt="vibe hud icon" width="120" height="120">
+  <h1 align="center">vibe hud</h1>
 
   <p align="center">
     A macOS notch overlay for Claude Code that keeps your sessions, approvals, replies, and updates within reach.
@@ -18,7 +18,7 @@
 
 ## What it does
 
-VibeHUD gives Claude Code a fast, ambient control surface on macOS. Instead of bouncing back and forth between your terminal and system prompts, you get a floating HUD for watching sessions, handling approvals, replying to prompts, and checking updates.
+vibe hud gives Claude Code a fast, ambient control surface on macOS. Instead of bouncing back and forth between your terminal and system prompts, you get a floating HUD for watching sessions, handling approvals, replying to prompts, and checking updates.
 
 ## Product highlights
 
@@ -29,18 +29,17 @@ VibeHUD gives Claude Code a fast, ambient control surface on macOS. Instead of b
 - Send replies back to Claude sessions from the HUD
 - Works with tmux, Terminal.app, iTerm2, and Ghostty
 - Choose your display, sound, Claude directory, and startup behavior
-- Optional sensor helper for tap and vibration-based actions
 - Built-in update checks and installs through Sparkle
 
 ## Main workflows
 
 ### Stay on top of active sessions
 
-VibeHUD watches your Claude Code activity in real time and keeps the important state visible: running work, waiting input, approvals, and recently active sessions.
+vibe hud watches your Claude Code activity in real time and keeps the important state visible: running work, waiting input, approvals, and recently active sessions.
 
 ### Handle approvals faster
 
-When Claude needs permission to use a tool, VibeHUD brings the approval flow to the notch so you can allow or deny it immediately.
+When Claude needs permission to use a tool, vibe hud brings the approval flow to the notch so you can allow or deny it immediately.
 
 ### Reply without context switching
 
@@ -59,7 +58,7 @@ You can open a session view to see history, follow progress, and keep track of w
 
 Download the latest release from the GitHub releases page and move `VibeHUD.app` into `/Applications`.
 
-On first launch, VibeHUD installs the Claude Code hooks it needs automatically.
+On first launch, vibe hud installs the Claude Code hooks it needs automatically.
 
 Release downloads:
 - https://github.com/section9-lab/VibeHUD/releases/latest
@@ -74,11 +73,10 @@ From the notch menu, you can configure:
 - launch at login
 - hooks on or off
 - update checks and installs
-- optional sensor helper access and sensitivity
 
 ## Compatibility
 
-VibeHUD is built around Claude Code on macOS and can route replies through the environments it detects, including:
+vibe hud is built around Claude Code on macOS and can route replies through the environments it detects, including:
 
 - bridge mode
 - tmux
@@ -87,24 +85,24 @@ VibeHUD is built around Claude Code on macOS and can route replies through the e
 - Ghostty
 - accessibility fallback when needed
 
-Some convenience features depend on your setup. For example, terminal focusing can benefit from tmux and optional window-management tooling, and sensor interactions depend on the helper being enabled and approved.
+Some convenience features depend on your setup. For example, terminal focusing can benefit from tmux and optional window-management tooling.
 
 ## Claude directory support
 
-VibeHUD works with the current Claude config layout and can resolve the config directory from:
+vibe hud works with the current Claude config layout and can resolve the config directory from:
 
 1. `CLAUDE_CONFIG_DIR`
-2. the directory you pick in VibeHUD
+2. the directory you pick in vibe hud
 3. `~/.config/claude`
 4. `~/.claude`
 
 ## Updates
 
-VibeHUD uses Sparkle for in-app updates, so installed builds can check for new versions and install them from the app.
+vibe hud uses Sparkle for in-app updates, so installed builds can check for new versions and install them from the app.
 
 ## Privacy
 
-VibeHUD uses Mixpanel for product analytics such as app version, build number, macOS version, and Claude Code version metadata. The README should not promise that conversation content is collected, and the app is intended to track product usage rather than your chat transcripts.
+vibe hud uses Mixpanel for product analytics such as app version, build number, macOS version, and Claude Code version metadata. The README should not promise that conversation content is collected, and the app is intended to track product usage rather than your chat transcripts.
 
 ## Build from source
 

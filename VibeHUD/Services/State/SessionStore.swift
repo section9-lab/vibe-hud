@@ -1079,6 +1079,41 @@ actor SessionStore {
 
     // MARK: - Periodic Status Check
 
+    /// Restore recently active Codex sessions after VibeHUD starts.
+    func recoverCodexSessions() async {
+        let recoveredSessions = await Task.detached {
+            CodexSessionRecovery.recentSessions()
+        }.value
+
+        Self.logger.info("Recovering \(recoveredSessions.count) Codex sessions")
+
+        for recovered in recoveredSessions where sessions[recovered.sessionId] == nil {
+            let event = HookEvent(
+                sessionId: recovered.sessionId,
+                cwd: recovered.cwd,
+                event: "SessionRecovery",
+                status: recovered.status,
+                source: "codex",
+                pid: nil,
+                tty: nil,
+                inputSocket: nil,
+                transcriptPath: recovered.transcriptPath,
+                terminalBundleId: nil,
+                terminalPid: nil,
+                tmuxPane: nil,
+                tmuxSocket: nil,
+                tool: nil,
+                toolInput: nil,
+                toolUseId: nil,
+                notificationType: nil,
+                message: nil
+            )
+
+            await processHookEvent(event)
+            await loadHistoryFromFile(sessionId: recovered.sessionId, cwd: recovered.cwd)
+        }
+    }
+
     /// Start periodic status checking for all sessions
     func startPeriodicStatusCheck() {
         guard statusCheckTask == nil else { return }
@@ -1113,7 +1148,7 @@ actor SessionStore {
                 continue
             }
 
-            if let pid = session.pid {
+            if session.source != .codex, let pid = session.pid {
                 let isRunning = isProcessRunning(pid: pid)
                 if !isRunning {
                     Self.logger.info("Process \(pid) no longer running, ending session \(sessionId.prefix(8))")
