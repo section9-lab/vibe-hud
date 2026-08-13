@@ -15,6 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install test dependencies
+        run: brew install ripgrep
+
       - name: Run tests
         run: |
           for test_file in tests/*.sh; do

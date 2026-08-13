@@ -20,6 +20,7 @@ fi
 for required in \
     'contents: write' \
     'runs-on: macos-15' \
+    'brew install ripgrep' \
     'CODE_SIGNING_ALLOWED=NO' \
     'hdiutil create' \
     'softprops/action-gh-release@v2'; do
