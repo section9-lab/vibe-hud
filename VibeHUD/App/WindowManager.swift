@@ -11,6 +11,7 @@ import os.log
 /// Logger for window management
 private let logger = Logger(subsystem: "com.vibehud", category: "Window")
 
+@MainActor
 class WindowManager {
     private(set) var windowController: NotchWindowController?
     private var isInitialLaunch = true
