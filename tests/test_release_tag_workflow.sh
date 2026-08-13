@@ -22,6 +22,8 @@ for required in \
     'runs-on: macos-15' \
     'brew install ripgrep' \
     'CODE_SIGNING_ALLOWED=NO' \
+    'codesign --force --deep --sign -' \
+    'codesign --verify --deep --strict' \
     'hdiutil create' \
     'softprops/action-gh-release@v2'; do
     if ! rg -Fq "$required" "$workflow"; then
