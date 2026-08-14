@@ -84,32 +84,14 @@ struct HookInstaller {
     private static func installClaudeHooksIfNeeded() {
         let hooksDir = ClaudePaths.hooksDir
         let pythonScript = hooksDir.appendingPathComponent("vibe-hud-state.py")
-        let bridgeScript = ClaudePaths.bridgeScriptPath
-        let ttyBridgeScript = hooksDir.appendingPathComponent("vibe-hud-tty-bridge.py")
-        let bridgeLauncher = ClaudePaths.bridgeLauncherPath
 
         try? FileManager.default.createDirectory(
             at: hooksDir,
             withIntermediateDirectories: true
         )
-        try? FileManager.default.createDirectory(
-            at: ClaudePaths.binDir,
-            withIntermediateDirectories: true
-        )
 
         installScript(resource: "vibe-hud-state", to: pythonScript)
-        installScript(resource: "vibe-hud-bridge", to: bridgeScript)
-        installScript(resource: "vibe-hud-tty-bridge", to: ttyBridgeScript)
-
-        let launcher = """
-        #!/bin/sh
-        exec \(detectPython()) \(ClaudePaths.bridgeScriptShellPath) "$@"
-        """
-        try? launcher.write(to: bridgeLauncher, atomically: true, encoding: .utf8)
-        try? FileManager.default.setAttributes(
-            [.posixPermissions: 0o755],
-            ofItemAtPath: bridgeLauncher.path
-        )
+        removeLegacyClaudeInputBridge()
 
         updateSettings(at: ClaudePaths.settingsFile)
     }
@@ -308,17 +290,23 @@ struct HookInstaller {
     private static func uninstallClaudeHooks() {
         let hooksDir = ClaudePaths.hooksDir
         let pythonScript = hooksDir.appendingPathComponent("vibe-hud-state.py")
-        let bridgeScript = ClaudePaths.bridgeScriptPath
-        let ttyBridgeScript = hooksDir.appendingPathComponent("vibe-hud-tty-bridge.py")
-        let bridgeLauncher = ClaudePaths.bridgeLauncherPath
         let settings = ClaudePaths.settingsFile
 
         try? FileManager.default.removeItem(at: pythonScript)
-        try? FileManager.default.removeItem(at: bridgeScript)
-        try? FileManager.default.removeItem(at: ttyBridgeScript)
-        try? FileManager.default.removeItem(at: bridgeLauncher)
+        removeLegacyClaudeInputBridge()
 
         removeHooks(at: settings)
+    }
+
+    private static func removeLegacyClaudeInputBridge() {
+        let legacyPaths = [
+            ClaudePaths.hooksDir.appendingPathComponent("vibe-hud-bridge.py"),
+            ClaudePaths.hooksDir.appendingPathComponent("vibe-hud-tty-bridge.py"),
+            ClaudePaths.claudeDir.appendingPathComponent("bin/claude-vibehud"),
+        ]
+        for path in legacyPaths {
+            try? FileManager.default.removeItem(at: path)
+        }
     }
 
     private static func isInstalled(at url: URL) -> Bool {

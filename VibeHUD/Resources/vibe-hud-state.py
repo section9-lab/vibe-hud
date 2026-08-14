@@ -9,11 +9,9 @@ import os
 import socket
 import subprocess
 import sys
-import time
 
 SOCKET_PATH = "/tmp/vibe-hud.sock"
 TIMEOUT_SECONDS = 300  # 5 minutes for permission decisions
-TTY_BRIDGE_PROTOCOL = "v4"
 VALID_SOURCES = {"claude", "codex", "cursor", "copilot", "pi", "opencode"}
 
 EVENT_ALIASES = {
@@ -194,61 +192,6 @@ def send_event(state):
         return None
 
 
-def bridge_socket_path(session_id):
-    safe = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in (session_id or "unknown"))
-    return f"/tmp/vibe-hud-tty-{TTY_BRIDGE_PROTOCOL}-{safe}.sock"
-
-
-def is_bridge_alive(socket_path):
-    try:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(0.25)
-        sock.connect(socket_path)
-        sock.sendall(json.dumps({"ping": True}).encode())
-        response = sock.recv(32)
-        sock.close()
-        return response.strip() == f"ok-{TTY_BRIDGE_PROTOCOL}".encode()
-    except Exception:
-        return False
-
-
-def ensure_tty_bridge(session_id, tty):
-    """Ensure per-session tty bridge is running and return socket path."""
-    existing = os.environ.get("VIBE_HUD_INPUT_SOCKET")
-    if existing:
-        return existing
-
-    if not tty:
-        return None
-
-    socket_path = bridge_socket_path(session_id)
-    if os.path.exists(socket_path) and is_bridge_alive(socket_path):
-        return socket_path
-
-    script_path = os.path.join(os.path.dirname(__file__), "vibe-hud-tty-bridge.py")
-    if not os.path.exists(script_path):
-        return None
-
-    python_exec = sys.executable or "python3"
-    try:
-        subprocess.Popen(
-            [python_exec, script_path, "--socket", socket_path, "--tty", tty],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            close_fds=True,
-        )
-    except Exception:
-        return None
-
-    for _ in range(8):
-        if os.path.exists(socket_path) and is_bridge_alive(socket_path):
-            return socket_path
-        time.sleep(0.03)
-
-    return None
-
-
 def main():
     try:
         data = json.load(sys.stdin)
@@ -271,8 +214,6 @@ def main():
     tmux_env = os.environ.get("TMUX", "")
     tmux_socket = tmux_env.split(",")[0] if tmux_env else None
 
-    input_socket = ensure_tty_bridge(session_id, tty)
-
     # Build state object
     state = {
         "session_id": session_id,
@@ -281,7 +222,6 @@ def main():
         "source": source,
         "pid": claude_pid,
         "tty": tty,
-        "input_socket": input_socket,
         "transcript_path": data.get("transcript_path"),
         "terminal_pid": terminal_pid,
         "terminal_bundle_id": terminal_bundle_id,

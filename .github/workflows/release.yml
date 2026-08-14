@@ -56,10 +56,13 @@ jobs:
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          mkdir -p release
+          app_path="build/DerivedData/Build/Products/Release/vibe hud.app"
+          mkdir -p "release/dmg-root"
+          cp -R "$app_path" "release/dmg-root/vibe hud.app"
+          ln -s /Applications "release/dmg-root/Applications"
           hdiutil create \
             -volname "vibe hud" \
-            -srcfolder "build/DerivedData/Build/Products/Release/vibe hud.app" \
+            -srcfolder "release/dmg-root" \
             -ov \
             -format UDZO \
             "release/vibe-hud-${TAG_NAME}.dmg"

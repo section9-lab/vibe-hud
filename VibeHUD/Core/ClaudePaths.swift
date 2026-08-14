@@ -52,10 +52,6 @@ enum ClaudePaths {
         claudeDir.appendingPathComponent("hooks")
     }
 
-    nonisolated static var binDir: URL {
-        claudeDir.appendingPathComponent("bin")
-    }
-
     nonisolated static var settingsFile: URL {
         claudeDir.appendingPathComponent("settings.json")
     }
@@ -69,18 +65,6 @@ enum ClaudePaths {
     /// quoting keeps paths with spaces from being split by the shell.
     nonisolated static var hookScriptShellPath: String {
         shellQuote(claudeDir.appendingPathComponent("hooks/vibe-hud-state.py").path)
-    }
-
-    nonisolated static var bridgeScriptPath: URL {
-        hooksDir.appendingPathComponent("vibe-hud-bridge.py")
-    }
-
-    nonisolated static var bridgeLauncherPath: URL {
-        binDir.appendingPathComponent("claude-vibehud")
-    }
-
-    nonisolated static var bridgeScriptShellPath: String {
-        shellQuote(bridgeScriptPath.path)
     }
 
     nonisolated private static func resolveClaudeDir() -> URL {

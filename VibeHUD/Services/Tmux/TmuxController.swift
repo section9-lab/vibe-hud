@@ -21,10 +21,6 @@ actor TmuxController {
         await TmuxTargetFinder.shared.findTarget(forWorkingDirectory: dir)
     }
 
-    func sendMessage(_ message: String, to target: TmuxTarget) async -> Bool {
-        await ToolApprovalHandler.shared.sendMessage(message, to: target)
-    }
-
     func approveOnce(target: TmuxTarget) async -> Bool {
         await ToolApprovalHandler.shared.approveOnce(target: target)
     }

@@ -19,7 +19,6 @@ private struct InstancesContentHeightPreferenceKey: PreferenceKey {
 struct ClaudeInstancesView: View {
     @ObservedObject var sessionMonitor: ClaudeSessionMonitor
     @ObservedObject var viewModel: NotchViewModel
-    @State private var askSelectedByKey: [String: [Int: Set<String>]] = [:]
 
     var body: some View {
         VStack(spacing: 8) {
@@ -92,30 +91,14 @@ struct ClaudeInstancesView: View {
         ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(spacing: 2) {
                 ForEach(sortedInstances) { session in
-                    VStack(spacing: 6) {
-                        InstanceRow(
-                            session: session,
-                            onFocus: { focusSession(session) },
-                            onChat: { openChat(session) },
-                            onArchive: { archiveSession(session) },
-                            onApprove: { approveSession(session) },
-                            onReject: { rejectSession(session) }
-                        )
-
-                        if let questions = askQuestions(for: session), !questions.isEmpty {
-                            SessionAskUserQuestionCard(
-                                session: session,
-                                questions: questions,
-                                selectedByQuestion: askSelections(for: session),
-                                onTapOption: { questionIndex, option in
-                                    handleAskOptionTap(session: session, questionIndex: questionIndex, option: option)
-                                },
-                                onTapConfirm: { questionIndex in
-                                    submitAskSelections(session: session, questionIndex: questionIndex, questions: questions)
-                                }
-                            )
-                        }
-                    }
+                    InstanceRow(
+                        session: session,
+                        onFocus: { focusSession(session) },
+                        onChat: { openChat(session) },
+                        onArchive: { archiveSession(session) },
+                        onApprove: { approveSession(session) },
+                        onReject: { rejectSession(session) }
+                    )
                     .id(session.stableId)
                 }
             }
@@ -130,87 +113,6 @@ struct ClaudeInstancesView: View {
             )
         }
         .scrollBounceBehavior(.basedOnSize)
-    }
-
-    private func askQuestions(for session: SessionState) -> [SessionAskUserQuestionItem]? {
-        guard session.pendingToolName == "AskUserQuestion",
-              let toolInput = session.activePermission?.toolInput,
-              let questionsRaw = toolInput["questions"]?.value as? [[String: Any]] else {
-            return nil
-        }
-
-        let parsed = questionsRaw.compactMap { q -> SessionAskUserQuestionItem? in
-            guard let question = q["question"] as? String else { return nil }
-            let multiSelect = q["multiSelect"] as? Bool ?? false
-            let optionsRaw = q["options"] as? [[String: Any]] ?? []
-            let options = optionsRaw.compactMap { $0["label"] as? String }
-            return SessionAskUserQuestionItem(question: question, options: options, multiSelect: multiSelect)
-        }
-
-        return parsed.isEmpty ? nil : parsed
-    }
-
-    private func askStateKey(for session: SessionState) -> String? {
-        guard let toolUseId = session.pendingToolId else { return nil }
-        return "\(session.sessionId)::\(toolUseId)"
-    }
-
-    private func askSelections(for session: SessionState) -> [Int: Set<String>] {
-        guard let key = askStateKey(for: session) else { return [:] }
-        return askSelectedByKey[key] ?? [:]
-    }
-
-    private func handleAskOptionTap(session: SessionState, questionIndex: Int, option: String) {
-        guard let questions = askQuestions(for: session),
-              questionIndex < questions.count,
-              let key = askStateKey(for: session) else { return }
-        let item = questions[questionIndex]
-        if item.multiSelect {
-            var all = askSelectedByKey[key] ?? [:]
-            var set = all[questionIndex] ?? Set<String>()
-            if set.contains(option) {
-                set.remove(option)
-            } else {
-                set.insert(option)
-            }
-            all[questionIndex] = set
-            askSelectedByKey[key] = all
-            return
-        }
-        Task {
-            let sent = await sessionMonitor.sendInteractiveAnswer(
-                sessionId: session.sessionId,
-                text: option
-            )
-            if !sent {
-                print("[ClaudeInstancesView] Failed to send AskUserQuestion answer for session \(session.sessionId)")
-            }
-        }
-    }
-
-    private func submitAskSelections(session: SessionState, questionIndex: Int, questions: [SessionAskUserQuestionItem]) {
-        guard questionIndex < questions.count,
-              questions[questionIndex].multiSelect,
-              let key = askStateKey(for: session) else { return }
-        let selected = (askSelectedByKey[key]?[questionIndex] ?? [])
-        guard !selected.isEmpty else { return }
-        let text = selected.sorted().joined(separator: ", ")
-        Task {
-            let sent = await sessionMonitor.sendInteractiveAnswer(
-                sessionId: session.sessionId,
-                text: text
-            )
-            guard sent else {
-                print("[ClaudeInstancesView] Failed to submit AskUserQuestion multi-select answer for session \(session.sessionId)")
-                return
-            }
-
-            await MainActor.run {
-                var all = askSelectedByKey[key] ?? [:]
-                all[questionIndex] = []
-                askSelectedByKey[key] = all
-            }
-        }
     }
 
     // MARK: - Actions
@@ -241,81 +143,6 @@ struct ClaudeInstancesView: View {
 
     private func archiveSession(_ session: SessionState) {
         sessionMonitor.archiveSession(sessionId: session.sessionId)
-    }
-}
-
-struct SessionAskUserQuestionItem {
-    let question: String
-    let options: [String]
-    let multiSelect: Bool
-}
-
-struct SessionAskUserQuestionCard: View {
-    let session: SessionState
-    let questions: [SessionAskUserQuestionItem]
-    let selectedByQuestion: [Int: Set<String>]
-    let onTapOption: (Int, String) -> Void
-    let onTapConfirm: (Int) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(MCPToolFormatter.formatToolName("AskUserQuestion"))
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundColor(TerminalColors.amber)
-
-            ForEach(Array(questions.enumerated()), id: \.offset) { questionIndex, item in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(item.question)
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.65))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    FlowLayout(spacing: 6) {
-                        ForEach(item.options, id: \.self) { option in
-                            let isSelected = (selectedByQuestion[questionIndex] ?? []).contains(option)
-
-                            Button {
-                                onTapOption(questionIndex, option)
-                            } label: {
-                                Text(option)
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(isSelected ? .black : .white.opacity(0.85))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .fill(isSelected ? Color.white.opacity(0.9) : Color.white.opacity(0.1))
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        if item.multiSelect && !(selectedByQuestion[questionIndex] ?? []).isEmpty {
-                            Button {
-                                onTapConfirm(questionIndex)
-                            } label: {
-                                Text("Confirm")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(.black)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .fill(TerminalColors.amber)
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(0.04))
-        )
     }
 }
 

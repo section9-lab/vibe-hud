@@ -89,7 +89,6 @@ struct SessionState: Equatable, Identifiable, Sendable {
 
     var pid: Int?
     var tty: String?
-    var inputSocketPath: String?
     var transcriptPath: String?
     var terminalBundleId: String?
     var terminalPid: Int?
@@ -145,7 +144,6 @@ struct SessionState: Equatable, Identifiable, Sendable {
         source: SessionSource = .claude,
         pid: Int? = nil,
         tty: String? = nil,
-        inputSocketPath: String? = nil,
         transcriptPath: String? = nil,
         terminalBundleId: String? = nil,
         terminalPid: Int? = nil,
@@ -170,7 +168,6 @@ struct SessionState: Equatable, Identifiable, Sendable {
         self.source = source
         self.pid = pid
         self.tty = tty
-        self.inputSocketPath = inputSocketPath
         self.transcriptPath = transcriptPath
         self.terminalBundleId = terminalBundleId
         self.terminalPid = terminalPid

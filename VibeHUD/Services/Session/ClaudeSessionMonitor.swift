@@ -128,20 +128,6 @@ class ClaudeSessionMonitor: ObservableObject {
         }
     }
 
-    /// Send an interactive answer (e.g. AskUserQuestion option) to a session terminal.
-    func sendInteractiveAnswer(sessionId: String, text: String) async -> Bool {
-        guard let session = await SessionStore.shared.session(for: sessionId) else {
-            print("[ClaudeSessionMonitor] Missing session for interactive answer: \(sessionId)")
-            return false
-        }
-
-        let sent = await ReplyRouter.shared.sendReply(text, for: session)
-        if !sent {
-            print("[ClaudeSessionMonitor] No delivery path succeeded for interactive answer. session=\(session.sessionId)")
-        }
-        return sent
-    }
-
     /// Archive (remove) a session from the instances list
     func archiveSession(sessionId: String) {
         Task {

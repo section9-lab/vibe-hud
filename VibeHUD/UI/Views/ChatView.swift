@@ -14,7 +14,6 @@ struct ChatView: View {
     let sessionMonitor: ClaudeSessionMonitor
     @ObservedObject var viewModel: NotchViewModel
 
-    @State private var inputText: String = ""
     @State private var history: [ChatHistoryItem] = []
     @State private var session: SessionState
     @State private var isLoading: Bool = true
@@ -24,7 +23,6 @@ struct ChatView: View {
     @State private var newMessageCount: Int = 0
     @State private var previousHistoryCount: Int = 0
     @State private var isBottomVisible: Bool = true
-    @FocusState private var isInputFocused: Bool
 
     init(sessionId: String, initialSession: SessionState, sessionMonitor: ClaudeSessionMonitor, viewModel: NotchViewModel) {
         self.sessionId = sessionId
@@ -67,25 +65,13 @@ struct ChatView: View {
                     messageList
                 }
 
-                // Approval bar, interactive prompt, or Input bar
-                if let tool = approvalTool {
-                    if tool == "AskUserQuestion" {
-                        // Interactive tools - show prompt to answer in terminal
-                        interactivePromptBar
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .bottom)),
-                                removal: .opacity
-                            ))
-                    } else {
-                        approvalBar(tool: tool)
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .bottom)),
-                                removal: .opacity
-                            ))
-                    }
-                } else {
-                    inputBar
-                        .transition(.opacity)
+                // AskUserQuestion answers stay in the terminal; regular approvals remain available here.
+                if let tool = approvalTool, tool != "AskUserQuestion" {
+                    approvalBar(tool: tool)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .bottom)),
+                            removal: .opacity
+                        ))
                 }
             }
         }
@@ -156,22 +142,6 @@ struct ChatView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         shouldScrollToBottom = true
                     }
-                }
-            }
-        }
-        .onChange(of: canSendMessages) { _, canSend in
-            // Auto-focus input when tmux messaging becomes available
-            if canSend && !isInputFocused {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    isInputFocused = true
-                }
-            }
-        }
-        .onAppear {
-            // Auto-focus input when chat opens and tmux messaging is available
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                if canSendMessages {
-                    isInputFocused = true
                 }
             }
         }
@@ -351,61 +321,6 @@ struct ChatView: View {
         }
     }
 
-    // MARK: - Input Bar
-
-    /// Can send messages only if session is in tmux
-    private var canSendMessages: Bool {
-        session.tty != nil
-    }
-
-    private var inputBar: some View {
-        HStack(spacing: 10) {
-            TextField(canSendMessages ? "Message Claude..." : "Waiting for session...", text: $inputText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .foregroundColor(canSendMessages ? .white : .white.opacity(0.4))
-                .focused($isInputFocused)
-                .disabled(!canSendMessages)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(Color.white.opacity(canSendMessages ? 0.08 : 0.04))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 20)
-                                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
-                        )
-                )
-                .onSubmit {
-                    sendMessage()
-                }
-
-            Button {
-                sendMessage()
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(!canSendMessages || inputText.isEmpty ? .white.opacity(0.2) : .white.opacity(0.9))
-            }
-            .buttonStyle(.plain)
-            .disabled(!canSendMessages || inputText.isEmpty)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.black.opacity(0.2))
-        .overlay(alignment: .top) {
-            LinearGradient(
-                colors: [fadeColor.opacity(0), fadeColor.opacity(0.7)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 24)
-            .offset(y: -24) // Push above input bar
-            .allowsHitTesting(false)
-        }
-        .zIndex(1) // Render above message list
-    }
-
     // MARK: - Approval Bar
 
     private func approvalBar(tool: String) -> some View {
@@ -415,37 +330,6 @@ struct ChatView: View {
             onApprove: { approvePermission() },
             onDeny: { denyPermission() }
         )
-    }
-
-    // MARK: - Interactive Prompt Bar
-
-    /// Bar for interactive tools like AskUserQuestion that need terminal input
-    private var interactivePromptBar: some View {
-        ChatInteractivePromptBar(
-            questions: askUserQuestions,
-            isInTmux: session.isInTmux,
-            onAnswer: { answer in
-                Task { await sendToSession(answer) }
-            },
-            onGoToTerminal: { focusTerminal() }
-        )
-    }
-
-    /// Parse questions and options from AskUserQuestion toolInput
-    private var askUserQuestions: [AskUserQuestionItem] {
-        guard let toolInput = session.activePermission?.toolInput,
-              let questionsRaw = toolInput["questions"]?.value as? [[String: Any]]
-        else { return [] }
-
-        return questionsRaw.compactMap { q in
-            guard let question = q["question"] as? String else { return nil }
-            let multiSelect = q["multiSelect"] as? Bool ?? false
-            let optionsRaw = q["options"] as? [[String: Any]] ?? []
-            let options = optionsRaw.compactMap { o -> String? in
-                o["label"] as? String
-            }
-            return AskUserQuestionItem(question: question, options: options, multiSelect: multiSelect)
-        }
     }
 
     // MARK: - Autoscroll Management
@@ -465,16 +349,6 @@ struct ChatView: View {
 
     // MARK: - Actions
 
-    private func focusTerminal() {
-        Task {
-            if let pid = session.pid {
-                _ = await YabaiController.shared.focusWindow(forClaudePid: pid)
-            } else {
-                _ = await YabaiController.shared.focusWindow(forWorkingDirectory: session.cwd)
-            }
-        }
-    }
-
     private func approvePermission() {
         sessionMonitor.approvePermission(sessionId: sessionId)
     }
@@ -483,28 +357,6 @@ struct ChatView: View {
         sessionMonitor.denyPermission(sessionId: sessionId, reason: nil)
     }
 
-    private func sendMessage() {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-
-        inputText = ""
-
-        // Resume autoscroll when user sends a message
-        resumeAutoscroll()
-        shouldScrollToBottom = true
-
-        // Don't add to history here - it will be synced from JSONL when UserPromptSubmit event fires
-        Task {
-            await sendToSession(text)
-        }
-    }
-
-    private func sendToSession(_ text: String) async {
-        let sent = await sessionMonitor.sendInteractiveAnswer(sessionId: session.sessionId, text: text)
-        if !sent {
-            print("[ChatView] Failed to send interactive answer for session \(session.sessionId)")
-        }
-    }
 }
 
 // MARK: - Message Item View
@@ -1034,175 +886,6 @@ struct InterruptedMessageView: View {
         }
     }
 }
-
-// MARK: - AskUserQuestion data model
-
-struct AskUserQuestionItem {
-    let question: String
-    let options: [String]
-    let multiSelect: Bool
-}
-
-// MARK: - Chat Interactive Prompt Bar
-
-/// Bar for AskUserQuestion — shows options as tappable buttons when available
-struct ChatInteractivePromptBar: View {
-    let questions: [AskUserQuestionItem]
-    let isInTmux: Bool
-    let onAnswer: (String) -> Void
-    let onGoToTerminal: () -> Void
-
-    @State private var showContent = false
-    @State private var selectedOptions: Set<String> = []
-
-    private var hasOptions: Bool {
-        questions.contains { !$0.options.isEmpty }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Header
-            HStack(spacing: 6) {
-                Text(MCPToolFormatter.formatToolName("AskUserQuestion"))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(TerminalColors.amber)
-                Spacer()
-                if !hasOptions {
-                    // No options: show Terminal button as fallback
-                    Button {
-                        onGoToTerminal()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "terminal")
-                                .font(.system(size: 11, weight: .medium))
-                            Text("Terminal")
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.white.opacity(0.9))
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            // Questions + options
-            if hasOptions {
-                ForEach(Array(questions.enumerated()), id: \.offset) { _, item in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(item.question)
-                            .font(.system(size: 12))
-                            .foregroundColor(.white.opacity(0.7))
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        FlowLayout(spacing: 6) {
-                            ForEach(item.options, id: \.self) { option in
-                                let isSelected = selectedOptions.contains(option)
-                                Button {
-                                    if item.multiSelect {
-                                        if isSelected {
-                                            selectedOptions.remove(option)
-                                        } else {
-                                            selectedOptions.insert(option)
-                                        }
-                                    } else {
-                                        onAnswer(option)
-                                    }
-                                } label: {
-                                    Text(option)
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(isSelected ? .black : .white.opacity(0.85))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 6)
-                                                .fill(isSelected ? Color.white.opacity(0.9) : Color.white.opacity(0.1))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            // Confirm button for multiSelect
-                            if item.multiSelect && !selectedOptions.isEmpty {
-                                Button {
-                                    onAnswer(selectedOptions.sorted().joined(separator: ", "))
-                                    selectedOptions.removeAll()
-                                } label: {
-                                    Text("Confirm")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(.black)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 6)
-                                                .fill(TerminalColors.amber)
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.black.opacity(0.2))
-        .opacity(showContent ? 1 : 0)
-        .offset(y: showContent ? 0 : 8)
-        .onAppear {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.75).delay(0.05)) {
-                showContent = true
-            }
-        }
-    }
-}
-
-// MARK: - FlowLayout (wrapping HStack)
-
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if x + size.width > maxWidth && x > 0 {
-                y += rowHeight + spacing
-                x = 0
-                rowHeight = 0
-            }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-        return CGSize(width: maxWidth, height: y + rowHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var rowHeight: CGFloat = 0
-
-        for view in subviews {
-            let size = view.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX && x > bounds.minX {
-                y += rowHeight + spacing
-                x = bounds.minX
-                rowHeight = 0
-            }
-            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-    }
-}
-
 
 // MARK: - Chat Approval Bar
 

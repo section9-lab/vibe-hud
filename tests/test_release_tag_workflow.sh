@@ -24,9 +24,12 @@ for required in \
     'CODE_SIGNING_ALLOWED=NO' \
     'codesign --force --deep --sign -' \
     'codesign --verify --deep --strict' \
+    'release/dmg-root' \
+    'ln -s /Applications' \
+    '-srcfolder "release/dmg-root"' \
     'hdiutil create' \
     'softprops/action-gh-release@v2'; do
-    if ! rg -Fq "$required" "$workflow"; then
+    if ! rg -Fq -- "$required" "$workflow"; then
         echo "Release workflow is missing: $required"
         exit 1
     fi

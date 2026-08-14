@@ -139,9 +139,6 @@ actor SessionStore {
         if let tty = event.tty {
             session.tty = tty.replacingOccurrences(of: "/dev/", with: "")
         }
-        if let inputSocket = event.inputSocket, !inputSocket.isEmpty {
-            session.inputSocketPath = inputSocket
-        }
         if let transcriptPath = event.transcriptPath, !transcriptPath.isEmpty {
             session.transcriptPath = transcriptPath
         }
@@ -202,7 +199,6 @@ actor SessionStore {
             source: SessionSource(rawSource: event.source, transcriptPath: event.transcriptPath),
             pid: event.pid,
             tty: event.tty?.replacingOccurrences(of: "/dev/", with: ""),
-            inputSocketPath: event.inputSocket,
             transcriptPath: event.transcriptPath,
             terminalBundleId: event.terminalBundleId,
             terminalPid: event.terminalPid,
@@ -1096,7 +1092,6 @@ actor SessionStore {
                 source: "codex",
                 pid: nil,
                 tty: nil,
-                inputSocket: nil,
                 transcriptPath: recovered.transcriptPath,
                 terminalBundleId: nil,
                 terminalPid: nil,

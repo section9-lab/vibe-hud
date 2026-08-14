@@ -21,7 +21,6 @@ struct HookEvent: Codable, Sendable {
     let source: String?
     let pid: Int?
     let tty: String?
-    let inputSocket: String?
     let transcriptPath: String?
     let terminalBundleId: String?
     let terminalPid: Int?
@@ -37,7 +36,6 @@ struct HookEvent: Codable, Sendable {
         case sessionId = "session_id"
         case cwd, event, status, pid, tty, tool
         case source
-        case inputSocket = "input_socket"
         case transcriptPath = "transcript_path"
         case terminalBundleId = "terminal_bundle_id"
         case terminalPid = "terminal_pid"
@@ -58,7 +56,6 @@ struct HookEvent: Codable, Sendable {
         source: String?,
         pid: Int?,
         tty: String?,
-        inputSocket: String?,
         transcriptPath: String?,
         terminalBundleId: String?,
         terminalPid: Int?,
@@ -77,7 +74,6 @@ struct HookEvent: Codable, Sendable {
         self.source = source
         self.pid = pid
         self.tty = tty
-        self.inputSocket = inputSocket
         self.transcriptPath = transcriptPath
         self.terminalBundleId = terminalBundleId
         self.terminalPid = terminalPid
@@ -484,7 +480,6 @@ class HookSocketServer {
                 source: event.source,
                 pid: event.pid,
                 tty: event.tty,
-                inputSocket: event.inputSocket,
                 transcriptPath: event.transcriptPath,
                 terminalBundleId: event.terminalBundleId,
                 terminalPid: event.terminalPid,

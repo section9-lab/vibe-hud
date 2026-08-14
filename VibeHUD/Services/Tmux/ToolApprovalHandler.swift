@@ -43,16 +43,6 @@ actor ToolApprovalHandler {
         return true
     }
 
-    /// Send a message to a tmux target
-    func sendMessage(_ message: String, to target: TmuxTarget, tmuxSocketPath: String? = nil) async -> Bool {
-        await sendKeys(toTargetString: target.targetString, keys: message, pressEnter: true, tmuxSocketPath: tmuxSocketPath)
-    }
-
-    /// Send a message to a raw tmux target string (e.g. "%12" or "session:window.pane")
-    func sendMessage(_ message: String, toTargetString target: String, tmuxSocketPath: String? = nil) async -> Bool {
-        await sendKeys(toTargetString: target, keys: message, pressEnter: true, tmuxSocketPath: tmuxSocketPath)
-    }
-
     // MARK: - Private Methods
 
     private func sendKeys(to target: TmuxTarget, keys: String, pressEnter: Bool, tmuxSocketPath: String? = nil) async -> Bool {
