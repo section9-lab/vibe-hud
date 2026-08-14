@@ -14,6 +14,7 @@ enum HookAgent: CaseIterable {
     case githubCopilot
     case pi
     case openCode
+    case workBuddy
 }
 
 struct HookInstaller {
@@ -33,6 +34,12 @@ struct HookInstaller {
         "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse",
         "PostToolUse", "PostToolUseFailure", "PermissionRequest", "Stop",
         "Error", "Notification", "PreCompact", "SubagentStart", "SubagentStop",
+    ]
+
+    nonisolated static let workBuddyEvents = [
+        "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse",
+        "PostToolUse", "Stop", "PreCompact", "Notification",
+        "SubagentStart", "SubagentStop",
     ]
 
     /// Refresh hooks that were already enabled by the user.
@@ -56,6 +63,8 @@ struct HookInstaller {
             installPiExtensionIfNeeded()
         case .openCode:
             installOpenCodeHooksIfNeeded()
+        case .workBuddy:
+            installWorkBuddyHooksIfNeeded()
         }
     }
 
@@ -78,6 +87,9 @@ struct HookInstaller {
         case .openCode:
             try? FileManager.default.removeItem(at: OpenCodePaths.pluginFile)
             removeOpenCodePlugin(at: OpenCodePaths.configFile)
+        case .workBuddy:
+            try? FileManager.default.removeItem(at: WorkBuddyPaths.hookScriptPath)
+            removeHooks(at: WorkBuddyPaths.settingsFile)
         }
     }
 
@@ -95,6 +107,8 @@ struct HookInstaller {
             FileManager.default.fileExists(atPath: PiPaths.extensionFile.path)
         case .openCode:
             isInstalledOpenCode(at: OpenCodePaths.configFile)
+        case .workBuddy:
+            isInstalled(at: WorkBuddyPaths.settingsFile)
         }
     }
 
@@ -131,6 +145,15 @@ struct HookInstaller {
 
         installScript(resource: "vibe-hud", to: OpenCodePaths.pluginFile, extension: "js")
         updateOpenCodeConfig(at: OpenCodePaths.configFile)
+    }
+
+    private static func installWorkBuddyHooksIfNeeded() {
+        try? FileManager.default.createDirectory(
+            at: WorkBuddyPaths.hooksDir,
+            withIntermediateDirectories: true
+        )
+        installScript(resource: "vibe-hud-state", to: WorkBuddyPaths.hookScriptPath)
+        updateWorkBuddySettings(at: WorkBuddyPaths.settingsFile, script: WorkBuddyPaths.hookScriptPath)
     }
 
     private static func installCursorHooksIfNeeded() {
@@ -280,6 +303,33 @@ struct HookInstaller {
             options: [.prettyPrinted, .sortedKeys]
         ) {
             try? data.write(to: hooksURL)
+        }
+    }
+
+    nonisolated static func updateWorkBuddySettings(at settingsURL: URL, script: URL) {
+        var json: [String: Any] = [:]
+        if let data = try? Data(contentsOf: settingsURL),
+           let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            json = existing
+        }
+
+        let command = "python3 \(shellQuote(script.path)) --source workbuddy"
+        let hook = [["type": "command", "command": command]]
+        let matcherEvents: Set<String> = ["PreToolUse", "PostToolUse", "Notification"]
+        var hooks = json["hooks"] as? [String: Any] ?? [:]
+
+        for event in workBuddyEvents {
+            let existing = hooks[event] as? [[String: Any]] ?? []
+            let cleaned = existing.compactMap { removingVibeHUDHooks(from: $0) }
+            let entry: [String: Any] = matcherEvents.contains(event)
+                ? ["matcher": "*", "hooks": hook]
+                : ["hooks": hook]
+            hooks[event] = cleaned + [entry]
+        }
+
+        json["hooks"] = hooks
+        if let data = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: settingsURL)
         }
     }
 
@@ -519,7 +569,7 @@ struct HookInstaller {
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destination.path)
     }
 
-    private static func shellQuote(_ path: String) -> String {
+    nonisolated private static func shellQuote(_ path: String) -> String {
         "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 

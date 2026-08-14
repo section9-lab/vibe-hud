@@ -33,6 +33,8 @@ struct SessionSourceIcon: View {
             AgentSymbolIcon(symbol: "circle.hexagongrid", size: size, color: .mint)
         case .opencode:
             OpenCodeIcon(size: size)
+        case .workbuddy:
+            AgentSymbolIcon(symbol: "person.crop.circle.badge.checkmark", size: size, color: .orange)
         }
     }
 }

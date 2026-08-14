@@ -145,6 +145,10 @@ actor ConversationParser {
             return parseOpenCodeConversationInfo(filePath: filePath)
         }
 
+        if isWorkBuddyTranscript(filePath: filePath, content: content) {
+            return parseWorkBuddyContent(content)
+        }
+
         if isCodexTranscript(filePath: filePath, content: content) {
             return parseCodexContent(content)
         }
@@ -413,6 +417,10 @@ actor ConversationParser {
             return parseNewOpenCodeLines(filePath: filePath, state: &state)
         }
 
+        if isWorkBuddyTranscript(filePath: filePath) {
+            return parseNewWorkBuddyLines(filePath: filePath, state: &state)
+        }
+
         if isCodexTranscript(filePath: filePath) {
             return parseNewCodexLines(filePath: filePath, state: &state)
         }
@@ -574,6 +582,184 @@ actor ConversationParser {
             return content.contains("\"type\":\"session_meta\"") || content.contains("\"type\":\"event_msg\"")
         }
         return false
+    }
+
+    nonisolated private func isWorkBuddyTranscript(filePath: String, content: String? = nil) -> Bool {
+        if filePath.contains("/.workbuddy/projects/") {
+            return true
+        }
+        if let content {
+            return content.contains("\"type\":\"ai-title\"") ||
+                content.contains("\"type\":\"function_call_result\"")
+        }
+        return false
+    }
+
+    private func parseWorkBuddyContent(_ content: String) -> ConversationInfo {
+        var summary: String?
+        var lastMessage: String?
+        var lastMessageRole: String?
+        var lastToolName: String?
+        var firstUserMessage: String?
+        var lastUserMessageDate: Date?
+
+        for line in content.components(separatedBy: "\n") where !line.isEmpty {
+            guard let data = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let type = json["type"] as? String else { continue }
+
+            switch type {
+            case "ai-title":
+                if let title = json["aiTitle"] as? String, !title.isEmpty {
+                    summary = title
+                }
+            case "message":
+                guard let role = json["role"] as? String,
+                      let text = workBuddyText(from: json), !text.isEmpty else { continue }
+                if role == "user" {
+                    if firstUserMessage == nil {
+                        firstUserMessage = Self.truncateMessage(text, maxLength: 50)
+                    }
+                    lastUserMessageDate = workBuddyTimestamp(json["timestamp"])
+                }
+                lastMessage = Self.truncateMessage(text, maxLength: 80)
+                lastMessageRole = role
+                lastToolName = nil
+            case "function_call":
+                guard let name = json["name"] as? String else { continue }
+                let input = workBuddyToolInput(json["arguments"])
+                lastMessage = Self.truncateMessage(Self.formatToolInput(input, toolName: name), maxLength: 80)
+                lastMessageRole = "tool"
+                lastToolName = name
+            default:
+                continue
+            }
+        }
+
+        return ConversationInfo(
+            summary: summary,
+            lastMessage: lastMessage,
+            lastMessageRole: lastMessageRole,
+            lastToolName: lastToolName,
+            firstUserMessage: firstUserMessage,
+            lastUserMessageDate: lastUserMessageDate
+        )
+    }
+
+    private func parseNewWorkBuddyLines(filePath: String, state: inout IncrementalParseState) -> [ChatMessage] {
+        guard let fileHandle = FileHandle(forReadingAtPath: filePath) else { return [] }
+        defer { try? fileHandle.close() }
+
+        guard let fileSize = try? fileHandle.seekToEnd() else { return [] }
+        if fileSize < state.lastFileOffset {
+            state = IncrementalParseState()
+        }
+        if fileSize == state.lastFileOffset { return [] }
+        guard (try? fileHandle.seek(toOffset: state.lastFileOffset)) != nil,
+              let data = try? fileHandle.readToEnd(),
+              let content = String(data: data, encoding: .utf8) else { return [] }
+
+        var newMessages: [ChatMessage] = []
+        for line in content.components(separatedBy: "\n") where !line.isEmpty {
+            guard let data = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let type = json["type"] as? String else { continue }
+
+            let timestamp = workBuddyTimestamp(json["timestamp"]) ?? Date()
+            let id = json["id"] as? String ?? "workbuddy-\(StableHash.hash(line.prefix(200)))"
+
+            switch type {
+            case "message":
+                guard let roleString = json["role"] as? String,
+                      let text = workBuddyText(from: json), !text.isEmpty else { continue }
+                let message = ChatMessage(
+                    id: id,
+                    role: roleString == "user" ? .user : .assistant,
+                    timestamp: timestamp,
+                    content: [.text(text)]
+                )
+                newMessages.append(message)
+                state.messages.append(message)
+            case "reasoning":
+                guard let text = workBuddyText(from: json, key: "rawContent"), !text.isEmpty else { continue }
+                let message = ChatMessage(id: id, role: .assistant, timestamp: timestamp, content: [.thinking(text)])
+                newMessages.append(message)
+                state.messages.append(message)
+            case "function_call":
+                guard let callId = json["callId"] as? String,
+                      let name = json["name"] as? String,
+                      !state.seenToolIds.contains(callId) else { continue }
+                state.seenToolIds.insert(callId)
+                state.toolIdToName[callId] = name
+                let input = workBuddyToolInput(json["arguments"]).reduce(into: [String: String]()) { result, entry in
+                    if let value = entry.value as? String {
+                        result[entry.key] = value
+                    } else if JSONSerialization.isValidJSONObject([entry.key: entry.value]),
+                              let data = try? JSONSerialization.data(withJSONObject: entry.value),
+                              let value = String(data: data, encoding: .utf8) {
+                        result[entry.key] = value
+                    }
+                }
+                let message = ChatMessage(
+                    id: id,
+                    role: .assistant,
+                    timestamp: timestamp,
+                    content: [.toolUse(ToolUseBlock(id: callId, name: name, input: input))]
+                )
+                newMessages.append(message)
+                state.messages.append(message)
+            case "function_call_result":
+                guard let callId = json["callId"] as? String else { continue }
+                let result = workBuddyResultText(json["output"])
+                let status = json["status"] as? String
+                state.completedToolIds.insert(callId)
+                state.toolResults[callId] = ToolResult(
+                    content: result,
+                    stdout: status == "completed" ? result : nil,
+                    stderr: status == "completed" ? nil : result,
+                    isError: status == "error" || status == "failed"
+                )
+            default:
+                continue
+            }
+        }
+
+        state.lastFileOffset = fileSize
+        return newMessages
+    }
+
+    private func workBuddyText(from json: [String: Any], key: String = "content") -> String? {
+        guard let blocks = json[key] as? [[String: Any]] else { return nil }
+        return blocks.compactMap { $0["text"] as? String }
+            .last(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+    }
+
+    private func workBuddyToolInput(_ value: Any?) -> [String: Any] {
+        if let dictionary = value as? [String: Any] { return dictionary }
+        guard let string = value as? String,
+              let data = string.data(using: .utf8),
+              let dictionary = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return dictionary
+    }
+
+    private func workBuddyResultText(_ value: Any?) -> String? {
+        if let text = value as? String { return text }
+        if let dictionary = value as? [String: Any] {
+            return dictionary["text"] as? String ?? dictionary["content"] as? String
+        }
+        return nil
+    }
+
+    private func workBuddyTimestamp(_ value: Any?) -> Date? {
+        let milliseconds: Double?
+        if let value = value as? Double {
+            milliseconds = value
+        } else if let value = value as? Int {
+            milliseconds = Double(value)
+        } else {
+            milliseconds = nil
+        }
+        return milliseconds.map { Date(timeIntervalSince1970: $0 / 1_000) }
     }
 
     private func parseCodexContent(_ content: String) -> ConversationInfo {

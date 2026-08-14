@@ -15,6 +15,7 @@ enum SessionSource: String, Codable, Equatable, Sendable {
     case copilot
     case pi
     case opencode
+    case workbuddy
 
     nonisolated init(rawSource: String?, transcriptPath: String? = nil) {
         if let normalized = rawSource?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
@@ -37,6 +38,9 @@ enum SessionSource: String, Codable, Equatable, Sendable {
             case "opencode":
                 self = .opencode
                 return
+            case "workbuddy":
+                self = .workbuddy
+                return
             default:
                 break
             }
@@ -50,6 +54,10 @@ enum SessionSource: String, Codable, Equatable, Sendable {
             }
             if lowercasedPath.contains("/.local/share/opencode/") {
                 self = .opencode
+                return
+            }
+            if lowercasedPath.contains("/.workbuddy/projects/") {
+                self = .workbuddy
                 return
             }
         }
@@ -71,6 +79,8 @@ enum SessionSource: String, Codable, Equatable, Sendable {
             "Pi"
         case .opencode:
             "OpenCode"
+        case .workbuddy:
+            "WorkBuddy"
         }
     }
 }

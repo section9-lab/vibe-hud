@@ -23,6 +23,7 @@ vibe hud gives Claude Code a fast, ambient control surface on macOS. Instead of 
 ## Product highlights
 
 - Live session HUD for multiple Claude Code sessions
+- WorkBuddy session status and conversation history through native hooks
 - Approve or deny tool requests from the notch
 - Answer `AskUserQuestion` prompts without leaving the workflow
 - Open chat history and review conversations in-app

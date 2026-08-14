@@ -122,6 +122,9 @@ struct NotchMenuView: View {
                     MenuToggleRow(icon: "chevron.left.forwardslash.chevron.right", label: "OpenCode", isOn: hookState(for: .openCode), isNested: true) {
                         toggleHook(.openCode)
                     }
+                    MenuToggleRow(icon: "person.crop.circle.badge.checkmark", label: "WorkBuddy", isOn: hookState(for: .workBuddy), isNested: true) {
+                        toggleHook(.workBuddy)
+                    }
                 }
 
                 AccessibilityRow(isEnabled: AXIsProcessTrusted())

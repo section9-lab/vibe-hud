@@ -13,7 +13,7 @@ import time
 
 SOCKET_PATH = "/tmp/vibe-hud.sock"
 TIMEOUT_SECONDS = 300  # 5 minutes for permission decisions
-VALID_SOURCES = {"claude", "codex", "cursor", "copilot", "vscodeagent", "pi", "opencode"}
+VALID_SOURCES = {"claude", "codex", "cursor", "copilot", "vscodeagent", "pi", "opencode", "workbuddy"}
 
 EVENT_ALIASES = {
     "sessionStart": "SessionStart",
@@ -137,6 +137,7 @@ def find_agent_pid(source, start_pid):
         "cursor": ("/cursor", "cursor.app"),
         "copilot": ("/copilot", "github-copilot"),
         "vscodeagent": ("visual studio code", "code helper"),
+        "workbuddy": ("/workbuddy", "workbuddy.app", "/codebuddy"),
     }.get(source, ())
 
     current = start_pid

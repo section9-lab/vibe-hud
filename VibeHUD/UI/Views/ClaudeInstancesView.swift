@@ -404,6 +404,8 @@ struct InstanceRow: View {
             .mint
         case .opencode:
             .white
+        case .workbuddy:
+            .orange
         }
     }
 

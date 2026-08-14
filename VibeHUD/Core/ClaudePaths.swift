@@ -213,3 +213,25 @@ enum PiPaths {
         extensionsDir.appendingPathComponent("vibe-hud.ts")
     }
 }
+
+enum WorkBuddyPaths {
+    nonisolated static var configDir: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".workbuddy")
+    }
+
+    nonisolated static var settingsFile: URL {
+        configDir.appendingPathComponent("settings.json")
+    }
+
+    nonisolated static var hooksDir: URL {
+        configDir.appendingPathComponent("hooks")
+    }
+
+    nonisolated static var hookScriptPath: URL {
+        hooksDir.appendingPathComponent("vibe-hud-state.py")
+    }
+
+    nonisolated static var projectsDir: URL {
+        configDir.appendingPathComponent("projects")
+    }
+}

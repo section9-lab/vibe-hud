@@ -58,6 +58,37 @@ struct HookInstallerTests {
         #expect(HookInstaller.vscodeAgentEvents.contains("PostToolUseFailure"))
         #expect(HookInstaller.vscodeAgentEvents.contains("SessionEnd"))
     }
+
+    @Test("Installs WorkBuddy hooks without removing other integrations")
+    func installsWorkBuddyHooks() throws {
+        let url = temporaryFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try writeJSON([
+            "hooks": [
+                "SessionStart": [
+                    ["hooks": [["type": "command", "command": "echo keep-me"]]],
+                    ["hooks": [["type": "command", "command": "python3 old/vibe-hud-state.py --source workbuddy"]]],
+                ]
+            ]
+        ], to: url)
+
+        HookInstaller.updateWorkBuddySettings(
+            at: url,
+            script: URL(fileURLWithPath: "/tmp/vibe-hud-state.py")
+        )
+
+        let json = try readJSON(at: url)
+        let hooks = try #require(json["hooks"] as? [String: Any])
+        #expect(Set(hooks.keys) == Set(HookInstaller.workBuddyEvents))
+        let sessionStart = try #require(hooks["SessionStart"] as? [[String: Any]])
+        let commands = sessionStart.flatMap { group in
+            (group["hooks"] as? [[String: Any]])?.compactMap { $0["command"] as? String } ?? []
+        }
+        #expect(commands == [
+            "echo keep-me",
+            "python3 '/tmp/vibe-hud-state.py' --source workbuddy",
+        ])
+    }
 }
 
 private func temporaryFileURL() -> URL {

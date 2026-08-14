@@ -191,6 +191,23 @@ class HookStateAdapterTests(unittest.TestCase):
         with mock.patch.object(adapter.subprocess, "run", side_effect=process_rows):
             self.assertEqual(adapter.find_agent_pid("codex", 42), 41)
 
+    def test_workbuddy_hook_preserves_transcript_and_source(self):
+        state = self.run_adapter(
+            {
+                "session_id": "workbuddy-session",
+                "cwd": "/tmp/project",
+                "transcript_path": "/Users/test/.workbuddy/projects/project/workbuddy-session.jsonl",
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": "pwd"},
+            },
+            "--source", "workbuddy",
+        )
+
+        self.assertEqual(state["source"], "workbuddy")
+        self.assertEqual(state["status"], "running_tool")
+        self.assertEqual(state["transcript_path"], "/Users/test/.workbuddy/projects/project/workbuddy-session.jsonl")
+
 
 if __name__ == "__main__":
     unittest.main()

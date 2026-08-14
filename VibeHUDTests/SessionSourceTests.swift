@@ -15,6 +15,7 @@ struct SessionSourceTests {
             ("vscodeagent", SessionSource.copilot),
             ("pi", SessionSource.pi),
             ("opencode", SessionSource.opencode),
+            ("workbuddy", SessionSource.workbuddy),
         ]
     )
     func mapsSourceAlias(input: String, expected: SessionSource) {
