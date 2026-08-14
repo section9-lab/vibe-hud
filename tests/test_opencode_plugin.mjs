@@ -32,6 +32,24 @@ async function captureEvent(input) {
 }
 
 try {
+  const busy = await captureEvent({
+    event: {
+      type: "session.status",
+      properties: { sessionID: "session-1", status: { type: "busy" } },
+    },
+  })
+  assert.equal(busy.event, "SessionStatus")
+  assert.equal(busy.status, "processing")
+
+  const idle = await captureEvent({
+    event: {
+      type: "session.status",
+      properties: { sessionID: "session-1", status: { type: "idle" } },
+    },
+  })
+  assert.equal(idle.event, "Stop")
+  assert.equal(idle.status, "waiting_for_input")
+
   const permission = await captureEvent({
     event: {
       type: "permission.asked",
@@ -50,6 +68,37 @@ try {
   assert.equal(permission.tool, "Bash")
   assert.equal(permission.tool_use_id, "permission-1")
   assert.deepEqual(permission.tool_input.patterns, ["pwd"])
+
+  const permissionResolved = await captureEvent({
+    event: {
+      type: "permission.replied",
+      properties: { sessionID: "session-1" },
+    },
+  })
+  assert.equal(permissionResolved.event, "PermissionResolved")
+  assert.equal(permissionResolved.status, "processing")
+
+  const question = await captureEvent({
+    event: {
+      type: "question.asked",
+      properties: {
+        sessionID: "session-1",
+        questions: [{ question: "Continue?" }],
+      },
+    },
+  })
+  assert.equal(question.event, "QuestionPending")
+  assert.equal(question.status, "waiting_for_input")
+  assert.equal(question.message, "Continue?")
+
+  const questionResolved = await captureEvent({
+    event: {
+      type: "question.rejected",
+      properties: { sessionID: "session-1" },
+    },
+  })
+  assert.equal(questionResolved.event, "QuestionResolved")
+  assert.equal(questionResolved.status, "processing")
 
   const failure = await captureEvent({
     event: {

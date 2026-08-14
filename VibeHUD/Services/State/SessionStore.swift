@@ -24,9 +24,7 @@ actor SessionStore {
     /// All sessions keyed by sessionId
     private var sessions: [String: SessionState] = [:]
 
-    private var processedHookEventIds: Set<String> = []
-    private var processedHookEventOrder: [String] = []
-    private let maximumProcessedHookEventCount = 2_048
+    private var hookEventSequence = HookEventSequence()
 
     /// Pending file syncs (debounced)
     private var pendingSyncs: [String: Task<Void, Never>] = [:]
@@ -127,27 +125,17 @@ actor SessionStore {
 
     private func processHookEvent(_ event: HookEvent) async {
         let sessionId = event.sessionId
-        if let eventId = event.eventId {
-            let eventKey = "\(event.source ?? "unknown"):\(sessionId):\(eventId)"
-            if processedHookEventIds.contains(eventKey) {
-                Self.logger.debug("Ignoring duplicate hook event \(eventKey, privacy: .public)")
-                return
-            }
-            processedHookEventIds.insert(eventKey)
-            processedHookEventOrder.append(eventKey)
-            if processedHookEventOrder.count > maximumProcessedHookEventCount {
-                let expiredKey = processedHookEventOrder.removeFirst()
-                processedHookEventIds.remove(expiredKey)
-            }
-        }
-
         let isNewSession = sessions[sessionId] == nil
         var session = sessions[sessionId] ?? createSession(from: event)
 
-        if let eventTimestamp = event.eventTimestamp,
-           let lastEventTimestamp = session.lastEventTimestamp,
-           eventTimestamp < lastEventTimestamp {
-            Self.logger.debug("Ignoring out-of-order hook event for \(sessionId.prefix(8), privacy: .public)")
+        guard hookEventSequence.shouldAccept(
+            source: event.source,
+            sessionId: sessionId,
+            eventId: event.eventId,
+            eventTimestamp: event.eventTimestamp,
+            lastEventTimestamp: session.lastEventTimestamp
+        ) else {
+            Self.logger.debug("Ignoring duplicate or out-of-order hook event for \(sessionId.prefix(8), privacy: .public)")
             return
         }
         if let eventTimestamp = event.eventTimestamp {

@@ -22,20 +22,24 @@ struct RecoveredCodexSession: Sendable {
 }
 
 enum CodexSessionRecovery {
-    nonisolated private static let maximumSessionAge: TimeInterval = 15 * 60
-    nonisolated private static let maximumSessionCount = 8
+    nonisolated static let maximumSessionAge: TimeInterval = 15 * 60
+    nonisolated static let maximumSessionCount = 8
 
     nonisolated static func recentSessions() -> [RecoveredCodexSession] {
+        recentSessions(in: CodexPaths.sessionsDir, now: Date())
+    }
+
+    nonisolated static func recentSessions(in directory: URL, now: Date) -> [RecoveredCodexSession] {
         let fileManager = FileManager.default
         guard let enumerator = fileManager.enumerator(
-            at: CodexPaths.sessionsDir,
+            at: directory,
             includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
             options: [.skipsHiddenFiles]
         ) else {
             return []
         }
 
-        let cutoff = Date().addingTimeInterval(-maximumSessionAge)
+        let cutoff = now.addingTimeInterval(-maximumSessionAge)
         let rollouts = enumerator.compactMap { element -> URL? in
             guard let url = element as? URL,
                   url.pathExtension == "jsonl",

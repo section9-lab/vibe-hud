@@ -17,6 +17,23 @@ enum HookAgent: CaseIterable {
 }
 
 struct HookInstaller {
+    nonisolated static let cursorEvents = [
+        "sessionStart", "sessionEnd", "beforeSubmitPrompt", "preToolUse",
+        "postToolUse", "postToolUseFailure", "preCompact", "subagentStart",
+        "subagentStop", "stop",
+    ]
+
+    nonisolated static let copilotEvents = [
+        "sessionStart", "sessionEnd", "userPromptSubmitted", "preToolUse",
+        "postToolUse", "postToolUseFailure", "permissionRequest", "agentStop",
+        "errorOccurred", "notification", "preCompact", "subagentStart", "subagentStop",
+    ]
+
+    nonisolated static let vscodeAgentEvents = [
+        "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse",
+        "PostToolUse", "PostToolUseFailure", "PermissionRequest", "Stop",
+        "Error", "Notification", "PreCompact", "SubagentStart", "SubagentStop",
+    ]
 
     /// Refresh hooks that were already enabled by the user.
     static func installIfNeeded() {
@@ -125,11 +142,7 @@ struct HookInstaller {
         installScript(resource: "vibe-hud-state", to: CursorPaths.hookScriptPath)
         updateCommandHooks(
             at: CursorPaths.hooksFile,
-            events: [
-                "sessionStart", "sessionEnd", "beforeSubmitPrompt", "preToolUse",
-                "postToolUse", "postToolUseFailure", "preCompact", "subagentStart",
-                "subagentStop", "stop",
-            ],
+            events: cursorEvents,
             command: "python3 \(shellQuote(CursorPaths.hookScriptPath.path)) --source cursor"
         )
     }
@@ -143,21 +156,13 @@ struct HookInstaller {
         installScript(resource: "vibe-hud-state", to: CopilotPaths.hookScriptPath)
         updateCommandHooks(
             at: CopilotPaths.hookFile,
-            events: [
-                "sessionStart", "sessionEnd", "userPromptSubmitted", "preToolUse",
-                "postToolUse", "postToolUseFailure", "permissionRequest", "agentStop",
-                "errorOccurred", "notification", "preCompact", "subagentStart", "subagentStop",
-            ],
+            events: copilotEvents,
             command: "python3 \(shellQuote(CopilotPaths.hookScriptPath.path)) --source copilot",
             includesVersion: true
         )
         updateCommandHooks(
             at: CopilotPaths.hookFile,
-            events: [
-                "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse",
-                "PostToolUse", "PostToolUseFailure", "PermissionRequest", "Stop",
-                "Error", "Notification", "PreCompact", "SubagentStart", "SubagentStop",
-            ],
+            events: vscodeAgentEvents,
             command: "python3 \(shellQuote(CopilotPaths.hookScriptPath.path)) --source vscodeagent",
             includesVersion: true
         )
@@ -426,7 +431,7 @@ struct HookInstaller {
         return plugins.contains(where: isVibeHUDOpenCodePlugin)
     }
 
-    private static func updateCommandHooks(
+    nonisolated static func updateCommandHooks(
         at url: URL,
         events: [String],
         command: String,
@@ -518,7 +523,7 @@ struct HookInstaller {
         "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    private static func isManagedCommandHook(_ entry: [String: Any]) -> Bool {
+    nonisolated private static func isManagedCommandHook(_ entry: [String: Any]) -> Bool {
         let command = entry["command"] as? String ?? ""
         return command.contains("vibe-hud-state.py") ||
             (command.contains("shellQuote(") &&

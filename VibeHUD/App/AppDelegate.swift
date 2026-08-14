@@ -39,6 +39,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if Foundation.ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return
+        }
+
         if !ensureSingleInstance() {
             NSApplication.shared.terminate(nil)
             return

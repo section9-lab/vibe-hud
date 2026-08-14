@@ -15,16 +15,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install test dependencies
-        run: brew install ripgrep
-
       - name: Run tests
         run: |
+          xcodebuild test \
+            -project VibeHUD.xcodeproj \
+            -scheme VibeHUD \
+            -destination "platform=macOS" \
+            -derivedDataPath build/Tests \
+            CODE_SIGNING_ALLOWED=NO
           python3 -m unittest tests/test_hook_state_adapter.py -v
           node tests/test_opencode_plugin.mjs
-          for test_file in tests/*.sh; do
-            bash "$test_file"
-          done
+          bash tests/test_release_contract.sh
 
       - name: Build release app
         run: |

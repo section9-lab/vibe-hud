@@ -118,6 +118,16 @@ To package a notarized release DMG:
 ./scripts/create-release.sh
 ```
 
+## Tests
+
+Run the native Swift test suite with Xcode:
+
+```bash
+xcodebuild test -project VibeHUD.xcodeproj -scheme VibeHUD -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+```
+
+The Python hook adapter, OpenCode JavaScript plugin, and release packaging contract retain focused runtime tests because those components execute outside the Swift process.
+
 ## License
 
 Apache 2.0
