@@ -695,7 +695,10 @@ actor ConversationParser {
                     if let value = entry.value as? String {
                         result[entry.key] = value
                     } else if JSONSerialization.isValidJSONObject([entry.key: entry.value]),
-                              let data = try? JSONSerialization.data(withJSONObject: entry.value),
+                              let data = try? JSONSerialization.data(
+                                withJSONObject: entry.value,
+                                options: [.fragmentsAllowed]
+                              ),
                               let value = String(data: data, encoding: .utf8) {
                         result[entry.key] = value
                     }

@@ -52,6 +52,8 @@ struct WorkBuddyConversationTests {
         #expect(tool.id == "call-1")
         #expect(tool.name == "Bash")
         #expect(tool.input["command"] == "pwd")
+        #expect(tool.input["dangerouslyDisableSandbox"] == "true")
+        #expect(tool.input["timeout"] == "120000")
         #expect(await parser.completedToolIds(for: "workbuddy-session") == ["call-1"])
         #expect(await parser.toolResults(for: "workbuddy-session")["call-1"]?.content == "/tmp/project")
     }
@@ -67,7 +69,7 @@ private func makeFixture() throws -> (root: URL, transcript: URL) {
     {"id":"user-1","timestamp":1760000001000,"type":"message","role":"user","content":[{"type":"input_text","text":"Injected context"},{"type":"input_text","text":"Show every active session"}],"sessionId":"workbuddy-session","cwd":"/tmp/project"}
     {"id":"reasoning-1","timestamp":1760000002000,"type":"reasoning","content":[],"rawContent":[{"type":"reasoning_text","text":"Inspect the hook payload"}],"sessionId":"workbuddy-session","cwd":"/tmp/project"}
     {"id":"assistant-1","timestamp":1760000003000,"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"I am checking it now"}],"sessionId":"workbuddy-session","cwd":"/tmp/project"}
-    {"id":"tool-1","timestamp":1760000004000,"type":"function_call","callId":"call-1","name":"Bash","arguments":"{\\\"command\\\":\\\"pwd\\\"}","sessionId":"workbuddy-session","cwd":"/tmp/project"}
+    {"id":"tool-1","timestamp":1760000004000,"type":"function_call","callId":"call-1","name":"Bash","arguments":"{\\\"command\\\":\\\"pwd\\\",\\\"dangerouslyDisableSandbox\\\":true,\\\"timeout\\\":120000}","sessionId":"workbuddy-session","cwd":"/tmp/project"}
     {"id":"result-1","timestamp":1760000005000,"type":"function_call_result","callId":"call-1","name":"Bash","status":"completed","output":{"type":"text","text":"/tmp/project"},"sessionId":"workbuddy-session","cwd":"/tmp/project"}
     """
     try content.write(to: transcript, atomically: true, encoding: .utf8)
