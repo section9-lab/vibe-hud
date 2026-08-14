@@ -79,6 +79,9 @@ enum SessionPhase: Sendable {
     /// Context is being compacted (auto or manual)
     case compacting
 
+    /// The latest agent turn ended with an error
+    case failed(String?)
+
     /// Session has ended
     case ended
 
@@ -93,6 +96,16 @@ enum SessionPhase: Sendable {
 
         // Any state can transition to ended
         case (_, .ended):
+            return true
+
+        case (_, .failed):
+            return true
+
+        case (.failed, .processing),
+             (.failed, .waitingForInput),
+             (.failed, .waitingForApproval),
+             (.failed, .compacting),
+             (.failed, .idle):
             return true
 
         // Idle transitions
@@ -155,7 +168,7 @@ enum SessionPhase: Sendable {
     /// Whether this phase indicates the session needs user attention
     var needsAttention: Bool {
         switch self {
-        case .waitingForApproval, .waitingForInput:
+        case .waitingForApproval, .waitingForInput, .failed:
             return true
         default:
             return false
@@ -175,6 +188,13 @@ enum SessionPhase: Sendable {
     /// Whether this is a waitingForApproval phase
     var isWaitingForApproval: Bool {
         if case .waitingForApproval = self {
+            return true
+        }
+        return false
+    }
+
+    var isFailed: Bool {
+        if case .failed = self {
             return true
         }
         return false
@@ -200,6 +220,7 @@ extension SessionPhase: Equatable {
         case (.waitingForApproval(let ctx1), .waitingForApproval(let ctx2)):
             return ctx1 == ctx2
         case (.compacting, .compacting): return true
+        case (.failed(let left), .failed(let right)): return left == right
         case (.ended, .ended): return true
         default: return false
         }
@@ -221,6 +242,8 @@ extension SessionPhase: CustomStringConvertible {
             return "waitingForApproval(\(ctx.toolName))"
         case .compacting:
             return "compacting"
+        case .failed(let message):
+            return message.map { "failed(\($0))" } ?? "failed"
         case .ended:
             return "ended"
         }

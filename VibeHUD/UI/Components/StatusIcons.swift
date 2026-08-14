@@ -233,6 +233,10 @@ struct StatusIcon: View {
             WaitingForApprovalIcon(size: size)
         case .processing, .compacting:
             RunningIcon(size: size)
+        case .failed:
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: size))
+                .foregroundColor(TerminalColors.red)
         case .idle, .ended:
             IdleIcon(size: size)
         }

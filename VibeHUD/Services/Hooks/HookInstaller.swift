@@ -125,7 +125,11 @@ struct HookInstaller {
         installScript(resource: "vibe-hud-state", to: CursorPaths.hookScriptPath)
         updateCommandHooks(
             at: CursorPaths.hooksFile,
-            events: ["sessionStart", "beforeSubmitPrompt", "preToolUse", "postToolUse", "stop"],
+            events: [
+                "sessionStart", "sessionEnd", "beforeSubmitPrompt", "preToolUse",
+                "postToolUse", "postToolUseFailure", "preCompact", "subagentStart",
+                "subagentStop", "stop",
+            ],
             command: "python3 \(shellQuote(CursorPaths.hookScriptPath.path)) --source cursor"
         )
     }
@@ -139,8 +143,22 @@ struct HookInstaller {
         installScript(resource: "vibe-hud-state", to: CopilotPaths.hookScriptPath)
         updateCommandHooks(
             at: CopilotPaths.hookFile,
-            events: ["sessionStart", "preToolUse", "postToolUse", "agentStop"],
+            events: [
+                "sessionStart", "sessionEnd", "userPromptSubmitted", "preToolUse",
+                "postToolUse", "postToolUseFailure", "permissionRequest", "agentStop",
+                "errorOccurred", "notification", "preCompact", "subagentStart", "subagentStop",
+            ],
             command: "python3 \(shellQuote(CopilotPaths.hookScriptPath.path)) --source copilot",
+            includesVersion: true
+        )
+        updateCommandHooks(
+            at: CopilotPaths.hookFile,
+            events: [
+                "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse",
+                "PostToolUse", "PostToolUseFailure", "PermissionRequest", "Stop",
+                "Error", "Notification", "PreCompact", "SubagentStart", "SubagentStop",
+            ],
+            command: "python3 \(shellQuote(CopilotPaths.hookScriptPath.path)) --source vscodeagent",
             includesVersion: true
         )
     }
@@ -198,6 +216,11 @@ struct HookInstaller {
             // PostCompact pairs with PreCompact so the UI can exit the
             // .compacting phase cleanly (v2.1.76+)
             ("PostCompact", preCompactConfig),
+            ("Elicitation", withoutMatcher),
+            ("ElicitationResult", withoutMatcher),
+            ("TeammateIdle", withoutMatcher),
+            ("TaskCreated", withoutMatcher),
+            ("TaskCompleted", withoutMatcher),
         ]
 
         for (event, config) in hookEvents {
@@ -233,7 +256,11 @@ struct HookInstaller {
         let vibeHUDEventEntry: [String: Any] = ["hooks": hookEntry]
 
         var hooks = json["hooks"] as? [String: Any] ?? [:]
-        let hookEvents = ["SessionStart", "UserPromptSubmit", "Stop", "PreToolUse", "PostToolUse"]
+        let hookEvents = [
+            "SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "PreToolUse",
+            "PostToolUse", "PermissionRequest", "PreCompact", "PostCompact",
+            "SubagentStart", "SubagentStop",
+        ]
 
         for event in hookEvents {
             let existingEvent = hooks[event] as? [[String: Any]] ?? []
@@ -419,7 +446,8 @@ struct HookInstaller {
         for event in events {
             let existingEvent = hooks[event] as? [[String: Any]] ?? []
             let cleanedEvent = existingEvent.filter { !isManagedCommandHook($0) }
-            hooks[event] = cleanedEvent + [["command": command]]
+            let eventCommand = "\(command) --event \(event)"
+            hooks[event] = cleanedEvent + [["command": eventCommand]]
         }
         json["hooks"] = hooks
 
@@ -503,37 +531,53 @@ struct HookInstaller {
 
     const socketPath = "/tmp/vibe-hud.sock"
 
-    function send(state: Record<string, unknown>) {
-      const socket = net.createConnection(socketPath)
-      socket.on("connect", () => socket.end(JSON.stringify(state)))
-      socket.on("error", () => socket.destroy())
+    function send(state: Record<string, unknown>): Promise<void> {
+      return new Promise((resolve) => {
+        const socket = net.createConnection(socketPath)
+        socket.on("connect", () => socket.end(JSON.stringify(state)))
+        socket.on("close", () => resolve())
+        socket.on("error", () => {
+          socket.destroy()
+          resolve()
+        })
+      })
     }
 
     function state(ctx: any, event: string, status: string) {
+      const rawSessionId = ctx.sessionManager.getSessionId()
       return {
-        session_id: ctx.sessionManager.getSessionFile() ?? `pi-${process.pid}`,
+        session_id: rawSessionId.startsWith("pi-") ? rawSessionId : `pi-${rawSessionId}`,
         cwd: ctx.cwd,
         event,
         status,
         source: "pi",
+        pid: process.pid,
+        event_timestamp: Date.now() / 1000,
       }
     }
 
     export default function (pi: ExtensionAPI) {
-      pi.on("session_start", (_event, ctx) => send(state(ctx, "SessionStart", "starting")))
-      pi.on("agent_start", (_event, ctx) => send(state(ctx, "UserPromptSubmit", "processing")))
-      pi.on("agent_settled", (_event, ctx) => send(state(ctx, "Stop", "waiting_for_input")))
-      pi.on("tool_call", (event, ctx) => send({
+      pi.on("session_start", async (_event, ctx) => send(state(ctx, "SessionStart", "waiting_for_input")))
+      pi.on("session_shutdown", async (_event, ctx) => send(state(ctx, "SessionEnd", "ended")))
+      pi.on("agent_start", async (_event, ctx) => send(state(ctx, "UserPromptSubmit", "processing")))
+      pi.on("agent_settled", async (_event, ctx) => send(state(ctx, "Stop", "waiting_for_input")))
+      pi.on("session_before_compact", async (_event, ctx) => send(state(ctx, "PreCompact", "compacting")))
+      pi.on("session_compact", async (event, ctx) => send(state(
+        ctx,
+        "PostCompact",
+        event.willRetry ? "processing" : "waiting_for_input"
+      )))
+      pi.on("tool_execution_start", async (event, ctx) => send({
         ...state(ctx, "PreToolUse", "running_tool"),
         tool: event.toolName,
-        tool_input: event.input,
+        tool_input: event.args,
         tool_use_id: event.toolCallId,
       }))
-      pi.on("tool_result", (event, ctx) => send({
-        ...state(ctx, "PostToolUse", "processing"),
+      pi.on("tool_execution_end", async (event, ctx) => send({
+        ...state(ctx, event.isError ? "PostToolUseFailure" : "PostToolUse", "processing"),
         tool: event.toolName,
-        tool_input: event.input,
         tool_use_id: event.toolCallId,
+        tool_error: event.isError ? String(event.result) : undefined,
       }))
     }
     """

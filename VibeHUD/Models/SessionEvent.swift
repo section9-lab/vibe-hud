@@ -150,12 +150,21 @@ extension HookEvent {
         }
 
         switch status {
+        case "waiting_for_approval":
+            return .waitingForApproval(PermissionContext(
+                toolUseId: toolUseId ?? "",
+                toolName: tool ?? "Permission",
+                toolInput: toolInput,
+                receivedAt: Date()
+            ))
         case "waiting_for_input":
             return .waitingForInput
         case "running_tool", "processing", "starting":
             return .processing
         case "compacting":
             return .compacting
+        case "failed":
+            return .failed(message)
         case "ended":
             return .ended
         default:
@@ -165,13 +174,13 @@ extension HookEvent {
 
     /// Whether this is a tool-related event
     nonisolated var isToolEvent: Bool {
-        event == "PreToolUse" || event == "PostToolUse" || event == "PermissionRequest"
+        event == "PreToolUse" || event == "PostToolUse" || event == "PostToolUseFailure" || event == "PermissionRequest"
     }
 
     /// Whether this event should trigger a file sync
     nonisolated var shouldSyncFile: Bool {
         switch event {
-        case "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop":
+        case "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "StopFailure":
             return true
         default:
             return false

@@ -68,7 +68,8 @@ class ClaudeSessionMonitor: ObservableObject {
                     HookSocketServer.shared.cancelPendingPermissions(sessionId: event.sessionId)
                 }
 
-                if event.event == "PostToolUse", let toolUseId = event.toolUseId {
+                if event.event == "PostToolUse" || event.event == "PostToolUseFailure",
+                   let toolUseId = event.toolUseId {
                     HookSocketServer.shared.cancelPendingPermission(toolUseId: toolUseId)
                 }
             },

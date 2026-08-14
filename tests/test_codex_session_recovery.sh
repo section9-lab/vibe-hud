@@ -24,3 +24,8 @@ if ! rg -Fq 'await SessionStore.shared.recoverCodexSessions()' "$monitor"; then
     echo "Codex rollout recovery is not started with monitoring"
     exit 1
 fi
+
+if ! rg -q 'private static let maximumSessionAge: TimeInterval = 15 \* 60' "$recovery"; then
+    echo "Codex recovery still treats day-old rollout files as active sessions"
+    exit 1
+fi

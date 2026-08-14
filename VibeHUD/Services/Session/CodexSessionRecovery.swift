@@ -12,13 +12,20 @@ struct RecoveredCodexSession: Sendable {
     let cwd: String
     let transcriptPath: String
     let status: String
+
+    nonisolated init(sessionId: String, cwd: String, transcriptPath: String, status: String) {
+        self.sessionId = sessionId
+        self.cwd = cwd
+        self.transcriptPath = transcriptPath
+        self.status = status
+    }
 }
 
 enum CodexSessionRecovery {
-    private static let maximumSessionAge: TimeInterval = 24 * 60 * 60
-    private static let maximumSessionCount = 8
+    nonisolated private static let maximumSessionAge: TimeInterval = 15 * 60
+    nonisolated private static let maximumSessionCount = 8
 
-    static func recentSessions() -> [RecoveredCodexSession] {
+    nonisolated static func recentSessions() -> [RecoveredCodexSession] {
         let fileManager = FileManager.default
         guard let enumerator = fileManager.enumerator(
             at: CodexPaths.sessionsDir,
@@ -50,10 +57,15 @@ enum CodexSessionRecovery {
         return rollouts.prefix(maximumSessionCount).compactMap(parse)
     }
 
-    private static func parse(_ rollout: URL) -> RecoveredCodexSession? {
+    nonisolated private static func parse(_ rollout: URL) -> RecoveredCodexSession? {
         guard let content = try? String(contentsOf: rollout, encoding: .utf8) else {
             return nil
         }
+
+        return parseContent(content, transcriptPath: rollout.path)
+    }
+
+    nonisolated static func parseContent(_ content: String, transcriptPath: String) -> RecoveredCodexSession? {
 
         var sessionId: String?
         var cwd: String?
@@ -81,6 +93,9 @@ enum CodexSessionRecovery {
                 status = "processing"
             case ("event_msg", "agent_message"):
                 status = "waiting_for_input"
+            case ("event_msg", "task_complete"),
+                 ("event_msg", "turn_aborted"):
+                status = "waiting_for_input"
             case ("response_item", "message") where payload["role"] as? String == "assistant":
                 status = "waiting_for_input"
             default:
@@ -95,7 +110,7 @@ enum CodexSessionRecovery {
         return RecoveredCodexSession(
             sessionId: sessionId,
             cwd: cwd,
-            transcriptPath: rollout.path,
+            transcriptPath: transcriptPath,
             status: status
         )
     }

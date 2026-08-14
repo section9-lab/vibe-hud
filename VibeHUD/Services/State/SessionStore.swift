@@ -24,6 +24,10 @@ actor SessionStore {
     /// All sessions keyed by sessionId
     private var sessions: [String: SessionState] = [:]
 
+    private var processedHookEventIds: Set<String> = []
+    private var processedHookEventOrder: [String] = []
+    private let maximumProcessedHookEventCount = 2_048
+
     /// Pending file syncs (debounced)
     private var pendingSyncs: [String: Task<Void, Never>] = [:]
 
@@ -123,8 +127,32 @@ actor SessionStore {
 
     private func processHookEvent(_ event: HookEvent) async {
         let sessionId = event.sessionId
+        if let eventId = event.eventId {
+            let eventKey = "\(event.source ?? "unknown"):\(sessionId):\(eventId)"
+            if processedHookEventIds.contains(eventKey) {
+                Self.logger.debug("Ignoring duplicate hook event \(eventKey, privacy: .public)")
+                return
+            }
+            processedHookEventIds.insert(eventKey)
+            processedHookEventOrder.append(eventKey)
+            if processedHookEventOrder.count > maximumProcessedHookEventCount {
+                let expiredKey = processedHookEventOrder.removeFirst()
+                processedHookEventIds.remove(expiredKey)
+            }
+        }
+
         let isNewSession = sessions[sessionId] == nil
         var session = sessions[sessionId] ?? createSession(from: event)
+
+        if let eventTimestamp = event.eventTimestamp,
+           let lastEventTimestamp = session.lastEventTimestamp,
+           eventTimestamp < lastEventTimestamp {
+            Self.logger.debug("Ignoring out-of-order hook event for \(sessionId.prefix(8), privacy: .public)")
+            return
+        }
+        if let eventTimestamp = event.eventTimestamp {
+            session.lastEventTimestamp = eventTimestamp
+        }
 
         // Track new session in Mixpanel
         if isNewSession {
@@ -254,16 +282,17 @@ actor SessionStore {
                 }
             }
 
-        case "PostToolUse":
+        case "PostToolUse", "PostToolUseFailure":
             if let toolUseId = event.toolUseId {
-                session.toolTracker.completeTool(id: toolUseId, success: true)
+                let success = event.event == "PostToolUse"
+                session.toolTracker.completeTool(id: toolUseId, success: success)
                 // Update chatItem status - tool completed (possibly approved via terminal)
                 // Only update if still waiting for approval or running
                 for i in 0..<session.chatItems.count {
                     if session.chatItems[i].id == toolUseId,
                        case .toolCall(var tool) = session.chatItems[i].type,
                        tool.status == .waitingForApproval || tool.status == .running {
-                        tool.status = .success
+                        tool.status = success ? .success : .error
                         session.chatItems[i] = ChatHistoryItem(
                             id: toolUseId,
                             type: .toolCall(tool),
@@ -315,7 +344,8 @@ actor SessionStore {
                 syncSubagentToolsToChatItems(session: &session)
             }
 
-        case "PostToolUse":
+        case "PostToolUse", "PostToolUseFailure":
+            let toolStatus: ToolStatus = event.event == "PostToolUse" ? .success : .error
             if ToolCallItem.isSubagentContainerName(event.tool), let toolUseId = event.toolUseId {
                 // Agent tool returned — the subagent has finished. Stop
                 // tracking so subsequent tools in the parent turn don't get
@@ -326,7 +356,7 @@ actor SessionStore {
                       session.subagentState.hasActiveSubagent {
                 // A subagent's inner tool completed. Update its status in the
                 // parent's subagent list and sync.
-                session.subagentState.updateSubagentToolStatus(toolId: toolUseId, status: .success)
+                session.subagentState.updateSubagentToolStatus(toolId: toolUseId, status: toolStatus)
                 syncSubagentToolsToChatItems(session: &session)
             }
 
@@ -1143,7 +1173,7 @@ actor SessionStore {
                 continue
             }
 
-            if session.source != .codex, let pid = session.pid {
+            if let pid = session.pid {
                 let isRunning = isProcessRunning(pid: pid)
                 if !isRunning {
                     Self.logger.info("Process \(pid) no longer running, ending session \(sessionId.prefix(8))")
@@ -1158,7 +1188,7 @@ actor SessionStore {
             switch session.phase {
             case .processing, .waitingForApproval:
                 needsSync = true
-            default:
+            case .idle, .waitingForInput, .compacting, .failed, .ended:
                 needsSync = false
             }
             if needsSync {

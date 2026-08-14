@@ -59,6 +59,47 @@ if ! rg -Fq 'command: "python3 \(shellQuote(CursorPaths.hookScriptPath.path)) --
     exit 1
 fi
 
+for event in sessionEnd postToolUseFailure preCompact subagentStart subagentStop; do
+    if ! rg -Fq "\"$event\"" "$installer"; then
+        echo "Cursor lifecycle hook $event is not installed"
+        exit 1
+    fi
+done
+
+for event in userPromptSubmitted sessionEnd errorOccurred notification permissionRequest postToolUseFailure preCompact subagentStart subagentStop; do
+    if ! rg -Fq "\"$event\"" "$installer"; then
+        echo "GitHub Copilot lifecycle hook $event is not installed"
+        exit 1
+    fi
+done
+
+codex_installer="$(sed -n '/private static func updateCodexHooks/,/private static func updateOpenCodeConfig/p' "$installer")"
+for event in PermissionRequest SessionEnd PreCompact PostCompact SubagentStart SubagentStop; do
+    if ! grep -Fq "\"$event\"" <<<"$codex_installer"; then
+        echo "Codex lifecycle hook $event is not installed"
+        exit 1
+    fi
+done
+
+claude_installer="$(sed -n '/private static func updateSettings/,/private static func updateCodexHooks/p' "$installer")"
+for event in Elicitation ElicitationResult TeammateIdle TaskCreated TaskCompleted; do
+    if ! grep -Fq "\"$event\"" <<<"$claude_installer"; then
+        echo "Claude lifecycle hook $event is not installed"
+        exit 1
+    fi
+done
+
+if ! rg -Fq 'let eventCommand = "\(command) --event \(event)"' "$installer"; then
+    echo "Cursor and Copilot hook commands do not pass their event name explicitly"
+    exit 1
+fi
+
+if ! rg -Fq -- '--source vscodeagent' "$installer" ||
+   ! rg -Fq '"SessionStart", "SessionEnd", "UserPromptSubmit"' "$installer"; then
+    echo "VS Code Copilot Agent hooks are not installed separately from Copilot CLI"
+    exit 1
+fi
+
 if ! rg -q 'isManagedCommandHook' "$installer"; then
     echo "Legacy invalid hook commands are not cleaned up"
     exit 1

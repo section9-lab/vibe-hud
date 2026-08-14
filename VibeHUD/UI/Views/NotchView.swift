@@ -35,6 +35,7 @@ struct NotchView: View {
                 session.phase == .processing ||
                 session.phase == .compacting ||
                 session.phase.isWaitingForApproval ||
+                session.phase.isFailed ||
                 isSessionWaitingForInputDisplay(session)
             }
             .sorted { a, b in
@@ -493,7 +494,7 @@ struct NotchView: View {
         switch session.phase {
         case .waitingForApproval:
             0
-        case .processing, .compacting:
+        case .processing, .compacting, .failed:
             1
         case .waitingForInput:
             2

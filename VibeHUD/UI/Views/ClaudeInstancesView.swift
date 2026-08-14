@@ -81,7 +81,7 @@ struct ClaudeInstancesView: View {
     /// Approval requests share priority with processing to maintain stable ordering
     private func phasePriority(_ phase: SessionPhase) -> Int {
         switch phase {
-        case .waitingForApproval, .processing, .compacting: return 0
+        case .waitingForApproval, .processing, .compacting, .failed: return 0
         case .waitingForInput: return 1
         case .idle, .ended: return 2
         }
@@ -185,6 +185,8 @@ struct InstanceRow: View {
             return "Ready"
         case .waitingForApproval:
             return "Waiting for approval"
+        case .failed(let message):
+            return message ?? "Failed"
         case .idle:
             return "Idle"
         case .ended:
@@ -376,6 +378,10 @@ struct InstanceRow: View {
         case .waitingForInput:
             Circle()
                 .fill(TerminalColors.green)
+                .frame(width: 6, height: 6)
+        case .failed:
+            Circle()
+                .fill(TerminalColors.red)
                 .frame(width: 6, height: 6)
         case .idle, .ended:
             Circle()

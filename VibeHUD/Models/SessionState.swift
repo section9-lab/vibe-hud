@@ -28,7 +28,7 @@ enum SessionSource: String, Codable, Equatable, Sendable {
             case "cursor":
                 self = .cursor
                 return
-            case "copilot", "githubcopilot":
+            case "copilot", "githubcopilot", "vscodeagent":
                 self = .copilot
                 return
             case "pi":
@@ -130,6 +130,7 @@ struct SessionState: Equatable, Identifiable, Sendable {
 
     var lastActivity: Date
     var createdAt: Date
+    var lastEventTimestamp: TimeInterval?
 
     // MARK: - Identifiable
 
@@ -160,7 +161,8 @@ struct SessionState: Equatable, Identifiable, Sendable {
         ),
         needsClearReconciliation: Bool = false,
         lastActivity: Date = Date(),
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        lastEventTimestamp: TimeInterval? = nil
     ) {
         self.sessionId = sessionId
         self.cwd = cwd
@@ -182,6 +184,7 @@ struct SessionState: Equatable, Identifiable, Sendable {
         self.needsClearReconciliation = needsClearReconciliation
         self.lastActivity = lastActivity
         self.createdAt = createdAt
+        self.lastEventTimestamp = lastEventTimestamp
     }
 
     // MARK: - Derived Properties

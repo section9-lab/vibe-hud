@@ -21,6 +21,8 @@ for required in \
     'contents: write' \
     'runs-on: macos-15' \
     'brew install ripgrep' \
+    'python3 -m unittest tests/test_hook_state_adapter.py -v' \
+    'node tests/test_opencode_plugin.mjs' \
     'CODE_SIGNING_ALLOWED=NO' \
     'codesign --force --deep --sign -' \
     'codesign --verify --deep --strict' \

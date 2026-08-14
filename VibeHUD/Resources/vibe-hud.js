@@ -5,6 +5,7 @@ import net from "net"
 
 function sendEvent(state, waitForResponse = false) {
   return new Promise((resolve) => {
+    if (!state.event_timestamp) state.event_timestamp = Date.now() / 1000
     const client = net.createConnection(SOCKET_PATH)
     let settled = false
     let buffer = ""
@@ -87,6 +88,7 @@ function buildBaseState(sessionID, cwd) {
     session_id: sessionID,
     cwd: cwd || process.cwd(),
     source: "opencode",
+    pid: process.pid,
     transcript_path: opencodeSessionFile(sessionID),
   }
 }
@@ -119,13 +121,24 @@ export default async function VibeHUDPlugin() {
       const type = event.type
       const props = event.properties || {}
 
-      if (type === "session.created" || type === "session.updated") {
+      if (type === "session.created") {
         await sendEvent({
           ...buildBaseState(props.info?.id || props.sessionID, props.info?.directory),
-          event: type === "session.created" ? "SessionStart" : "Notification",
-          status: props.info?.time?.archived ? "ended" : "waiting_for_input",
+          event: "SessionStart",
+          status: "waiting_for_input",
           message: props.info?.title,
         })
+        return
+      }
+
+      if (type === "session.updated") {
+        if (props.info?.time?.archived) {
+          await sendEvent({
+            ...buildBaseState(props.info?.id || props.sessionID, props.info?.directory),
+            event: "SessionEnd",
+            status: "ended",
+          })
+        }
         return
       }
 
@@ -143,6 +156,72 @@ export default async function VibeHUDPlugin() {
           ...buildBaseState(props.sessionID, process.cwd()),
           event: "Stop",
           status: "waiting_for_input",
+        })
+        return
+      }
+
+      if (type === "session.status") {
+        const sessionStatus = props.status?.type || props.status
+        const isWaiting = sessionStatus === "idle"
+        await sendEvent({
+          ...buildBaseState(props.sessionID, process.cwd()),
+          event: isWaiting ? "Stop" : "SessionStatus",
+          status: isWaiting ? "waiting_for_input" : "processing",
+          message: sessionStatus === "retry" ? props.status?.message : undefined,
+        })
+        return
+      }
+
+      if (type === "session.error") {
+        await sendEvent({
+          ...buildBaseState(props.sessionID, process.cwd()),
+          event: "StopFailure",
+          status: "failed",
+          message: props.error?.data?.message || props.error?.message || String(props.error || "OpenCode session error"),
+        })
+        return
+      }
+
+      if (type === "permission.asked") {
+        await sendEvent({
+          ...buildBaseState(props.sessionID, process.cwd()),
+          event: "PermissionPending",
+          status: "waiting_for_approval",
+          tool: normalizeToolName(props.metadata?.tool || props.permission),
+          tool_input: normalizeToolInput({
+            patterns: props.patterns,
+            ...(props.metadata || {}),
+          }),
+          tool_use_id: props.id,
+        })
+        return
+      }
+
+      if (type === "permission.replied") {
+        await sendEvent({
+          ...buildBaseState(props.sessionID || props.permission?.sessionID, process.cwd()),
+          event: "PermissionResolved",
+          status: "processing",
+        })
+        return
+      }
+
+      if (type === "question.asked") {
+        const question = props.question || props
+        await sendEvent({
+          ...buildBaseState(question.sessionID || props.sessionID, process.cwd()),
+          event: "QuestionPending",
+          status: "waiting_for_input",
+          message: question.questions?.[0]?.question || question.question,
+        })
+        return
+      }
+
+      if (type === "question.replied" || type === "question.rejected") {
+        await sendEvent({
+          ...buildBaseState(props.sessionID || props.question?.sessionID, process.cwd()),
+          event: "QuestionResolved",
+          status: "processing",
         })
         return
       }
@@ -169,11 +248,12 @@ export default async function VibeHUDPlugin() {
           if (part.state?.status === "completed" || part.state?.status === "error") {
             await sendEvent({
               ...buildBaseState(part.sessionID, process.cwd()),
-              event: "PostToolUse",
+              event: part.state.status === "error" ? "PostToolUseFailure" : "PostToolUse",
               status: "processing",
               tool: toolName,
               tool_input: toolInput,
               tool_use_id: callID,
+              tool_error: part.state.status === "error" ? part.state?.error : undefined,
             })
             return
           }
