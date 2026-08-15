@@ -21,6 +21,11 @@ struct RecoveredCodexSession: Sendable {
     }
 }
 
+struct CodexSessionRecoveryScan: Sendable {
+    let sessions: [RecoveredCodexSession]
+    let examinedTranscriptPaths: Set<String>
+}
+
 enum CodexSessionRecovery {
     nonisolated static let maximumSessionAge: TimeInterval = 15 * 60
     nonisolated static let maximumSessionCount = 8
@@ -31,13 +36,23 @@ enum CodexSessionRecovery {
     }
 
     nonisolated static func recentSessions(in directory: URL, now: Date) -> [RecoveredCodexSession] {
+        scanRecentSessions(in: directory, now: now).sessions
+    }
+
+    nonisolated static func scanRecentSessions(
+        in directory: URL,
+        now: Date,
+        excludingTranscriptPaths: Set<String> = [],
+        excludingSessionIds: Set<String> = [],
+        maximumSessionCount: Int = CodexSessionRecovery.maximumSessionCount
+    ) -> CodexSessionRecoveryScan {
         let fileManager = FileManager.default
         guard let enumerator = fileManager.enumerator(
             at: directory,
             includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
             options: [.skipsHiddenFiles]
         ) else {
-            return []
+            return CodexSessionRecoveryScan(sessions: [], examinedTranscriptPaths: [])
         }
 
         let cutoff = now.addingTimeInterval(-maximumSessionAge)
@@ -60,8 +75,10 @@ enum CodexSessionRecovery {
         }
 
         var recoveredSessions: [RecoveredCodexSession] = []
-        var recoveredIds = Set<String>()
-        for rollout in rollouts {
+        var recoveredIds = excludingSessionIds
+        var examinedTranscriptPaths = Set<String>()
+        for rollout in rollouts where !excludingTranscriptPaths.contains(rollout.path) {
+            examinedTranscriptPaths.insert(rollout.path)
             guard let recovered = parse(rollout),
                   recoveredIds.insert(recovered.sessionId).inserted else {
                 continue
@@ -71,7 +88,10 @@ enum CodexSessionRecovery {
                 break
             }
         }
-        return recoveredSessions
+        return CodexSessionRecoveryScan(
+            sessions: recoveredSessions,
+            examinedTranscriptPaths: examinedTranscriptPaths
+        )
     }
 
     nonisolated private static func parse(_ rollout: URL) -> RecoveredCodexSession? {

@@ -35,6 +35,9 @@ actor SessionStore {
     /// Periodic status check task
     private var statusCheckTask: Task<Void, Never>?
 
+    /// Rollouts already examined for Codex session discovery.
+    private var examinedCodexTranscriptPaths = Set<String>()
+
     /// Status check interval (3 seconds)
     private let statusCheckIntervalSeconds: UInt64 = 3
 
@@ -1101,14 +1104,30 @@ actor SessionStore {
     // MARK: - Periodic Status Check
 
     /// Restore recently active Codex sessions after VibeHUD starts.
-    func recoverCodexSessions() async {
-        let recoveredSessions = await Task.detached {
-            CodexSessionRecovery.recentSessions()
+    func recoverCodexSessions(
+        in directory: URL = CodexPaths.sessionsDir,
+        now: Date = Date()
+    ) async {
+        let existingCodexIds = Set(sessions.values.filter { $0.source == .codex }.map(\.sessionId))
+        let remainingSessionCount = CodexSessionRecovery.maximumSessionCount - existingCodexIds.count
+        guard remainingSessionCount > 0 else { return }
+
+        let excludedPaths = examinedCodexTranscriptPaths
+        let scan = await Task.detached {
+            CodexSessionRecovery.scanRecentSessions(
+                in: directory,
+                now: now,
+                excludingTranscriptPaths: excludedPaths,
+                excludingSessionIds: existingCodexIds,
+                maximumSessionCount: remainingSessionCount
+            )
         }.value
+        examinedCodexTranscriptPaths.formUnion(scan.examinedTranscriptPaths)
 
-        Self.logger.info("Recovering \(recoveredSessions.count) Codex sessions")
+        guard !scan.sessions.isEmpty else { return }
+        Self.logger.info("Recovering \(scan.sessions.count) Codex sessions")
 
-        for recovered in recoveredSessions where sessions[recovered.sessionId] == nil {
+        for recovered in scan.sessions {
             let event = HookEvent(
                 sessionId: recovered.sessionId,
                 cwd: recovered.cwd,
@@ -1157,7 +1176,11 @@ actor SessionStore {
     }
 
     /// Recheck status of all active sessions
-    func recheckAllSessions() {
+    func recheckAllSessions(
+        codexSessionsDirectory: URL = CodexPaths.sessionsDir,
+        now: Date = Date()
+    ) async {
+        await recoverCodexSessions(in: codexSessionsDirectory, now: now)
         var stateChanged = false
 
         for (sessionId, existingSession) in Array(sessions) {
@@ -1180,9 +1203,10 @@ actor SessionStore {
                 }
             }
 
-            if Self.isStaleCodexSession(session) {
+            if Self.isStaleCodexSession(session, now: now) {
                 Self.logger.info("Removing stale Codex session \(sessionId.prefix(8))")
                 sessions.removeValue(forKey: sessionId)
+                examinedCodexTranscriptPaths.removeAll()
                 cancelPendingSync(sessionId: sessionId)
                 stateChanged = true
                 continue

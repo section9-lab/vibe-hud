@@ -108,6 +108,27 @@ struct CodexSessionRecoveryTests {
         #expect(recovered.contains { $0.sessionId == "session-6" })
     }
 
+    @Test("Recovery scans skip rollout files that were already examined")
+    func skipsPreviouslyScannedRollouts() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let now = Date()
+        try writeRollout(index: 1, modifiedAt: now, to: directory)
+        let firstScan = CodexSessionRecovery.scanRecentSessions(in: directory, now: now)
+        let secondScan = CodexSessionRecovery.scanRecentSessions(
+            in: directory,
+            now: now,
+            excludingTranscriptPaths: firstScan.examinedTranscriptPaths
+        )
+
+        #expect(firstScan.sessions.map(\.sessionId) == ["session-1"])
+        #expect(secondScan.sessions.isEmpty)
+        #expect(secondScan.examinedTranscriptPaths.isEmpty)
+    }
+
     @Test("Detects a stale recovered Codex session without a pid")
     func detectsStalePidlessSession() throws {
         let (session, now, directory) = try makeStaleSession(pid: nil)
@@ -167,6 +188,22 @@ struct CodexSessionRecoveryTests {
         await store.recheckAllSessions()
 
         #expect(await store.session(for: "session-1")?.phase == .processing)
+    }
+
+    @Test("Periodic checks discover Codex sessions created after launch")
+    func periodicCheckDiscoversNewSession() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let now = Date()
+        try writeRollout(index: 2, modifiedAt: now, to: directory)
+        let store = SessionStore()
+
+        await store.recheckAllSessions(codexSessionsDirectory: directory, now: now)
+
+        #expect(await store.session(for: "session-2") != nil)
     }
 
     private func makeStaleSession(pid: Int?) throws -> (SessionState, Date, URL) {
