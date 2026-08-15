@@ -50,7 +50,9 @@ actor SessionStore {
 
     // MARK: - Initialization
 
-    private init() {}
+    init(initialSessions: [SessionState] = []) {
+        sessions = Dictionary(uniqueKeysWithValues: initialSessions.map { ($0.sessionId, $0) })
+    }
 
     // MARK: - Event Processing
 
@@ -125,6 +127,11 @@ actor SessionStore {
 
     private func processHookEvent(_ event: HookEvent) async {
         let sessionId = event.sessionId
+        guard event.isDisplayableSession else {
+            sessions.removeValue(forKey: sessionId)
+            cancelPendingSync(sessionId: sessionId)
+            return
+        }
         let isNewSession = sessions[sessionId] == nil
         var session = sessions[sessionId] ?? createSession(from: event)
 
@@ -1150,14 +1157,15 @@ actor SessionStore {
     }
 
     /// Recheck status of all active sessions
-    private func recheckAllSessions() {
-        var removedSession = false
+    func recheckAllSessions() {
+        var stateChanged = false
 
-        for (sessionId, session) in Array(sessions) {
+        for (sessionId, existingSession) in Array(sessions) {
+            var session = existingSession
             if session.phase == .ended {
                 sessions.removeValue(forKey: sessionId)
                 cancelPendingSync(sessionId: sessionId)
-                removedSession = true
+                stateChanged = true
                 continue
             }
 
@@ -1167,8 +1175,35 @@ actor SessionStore {
                     Self.logger.info("Process \(pid) no longer running, ending session \(sessionId.prefix(8))")
                     sessions.removeValue(forKey: sessionId)
                     cancelPendingSync(sessionId: sessionId)
-                    removedSession = true
+                    stateChanged = true
                     continue
+                }
+            }
+
+            if Self.isStaleCodexSession(session) {
+                Self.logger.info("Removing stale Codex session \(sessionId.prefix(8))")
+                sessions.removeValue(forKey: sessionId)
+                cancelPendingSync(sessionId: sessionId)
+                stateChanged = true
+                continue
+            }
+
+            let hasHookManagedPhase: Bool
+            switch session.phase {
+            case .waitingForApproval, .compacting:
+                hasHookManagedPhase = true
+            default:
+                hasHookManagedPhase = false
+            }
+            if session.source == .codex,
+               !hasHookManagedPhase,
+               let transcriptPath = session.transcriptPath,
+               let status = CodexSessionRecovery.currentStatus(at: transcriptPath) {
+                let newPhase: SessionPhase = status == "processing" ? .processing : .waitingForInput
+                if session.phase != newPhase, session.phase.canTransition(to: newPhase) {
+                    session.phase = newPhase
+                    sessions[sessionId] = session
+                    stateChanged = true
                 }
             }
 
@@ -1184,9 +1219,31 @@ actor SessionStore {
             }
         }
 
-        if removedSession {
+        if stateChanged {
             publishState()
         }
+    }
+
+    nonisolated static func isStaleCodexSession(
+        _ session: SessionState,
+        now: Date = Date()
+    ) -> Bool {
+        guard session.source == .codex,
+              let transcriptPath = session.transcriptPath else {
+            return false
+        }
+
+        guard FileManager.default.fileExists(atPath: transcriptPath) else {
+            return true
+        }
+
+        guard let modifiedAt = (try? URL(fileURLWithPath: transcriptPath).resourceValues(
+            forKeys: [.contentModificationDateKey]
+        ))?.contentModificationDate else {
+            return false
+        }
+
+        return now.timeIntervalSince(modifiedAt) > CodexSessionRecovery.maximumSessionAge
     }
 
     /// Check if a process is still running

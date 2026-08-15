@@ -24,6 +24,7 @@ struct RecoveredCodexSession: Sendable {
 enum CodexSessionRecovery {
     nonisolated static let maximumSessionAge: TimeInterval = 15 * 60
     nonisolated static let maximumSessionCount = 8
+    private nonisolated static let statusTailSize: UInt64 = 256 * 1024
 
     nonisolated static func recentSessions() -> [RecoveredCodexSession] {
         recentSessions(in: CodexPaths.sessionsDir, now: Date())
@@ -58,7 +59,7 @@ enum CodexSessionRecovery {
             return left > right
         }
 
-        return rollouts.prefix(maximumSessionCount).compactMap(parse)
+        return Array(rollouts.lazy.compactMap(parse).prefix(maximumSessionCount))
     }
 
     nonisolated private static func parse(_ rollout: URL) -> RecoveredCodexSession? {
@@ -88,22 +89,8 @@ enum CodexSessionRecovery {
                 continue
             }
 
-            switch (json["type"] as? String, payload["type"] as? String) {
-            case ("event_msg", "user_message"),
-                 ("event_msg", "agent_reasoning"),
-                 ("response_item", "reasoning"),
-                 ("response_item", "custom_tool_call"),
-                 ("response_item", "function_call"):
-                status = "processing"
-            case ("event_msg", "agent_message"):
-                status = "waiting_for_input"
-            case ("event_msg", "task_complete"),
-                 ("event_msg", "turn_aborted"):
-                status = "waiting_for_input"
-            case ("response_item", "message") where payload["role"] as? String == "assistant":
-                status = "waiting_for_input"
-            default:
-                continue
+            if let newStatus = eventStatus(for: json, payload: payload) {
+                status = newStatus
             }
         }
 
@@ -117,5 +104,55 @@ enum CodexSessionRecovery {
             transcriptPath: transcriptPath,
             status: status
         )
+    }
+
+    nonisolated static func currentStatus(at transcriptPath: String) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: transcriptPath)) else {
+            return nil
+        }
+        defer { try? handle.close() }
+
+        guard let size = try? handle.seekToEnd() else { return nil }
+        let offset = size > statusTailSize ? size - statusTailSize : 0
+        do {
+            try handle.seek(toOffset: offset)
+            guard let data = try handle.readToEnd() else { return nil }
+
+            var latestStatus: String?
+            for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
+                guard let lineData = line.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                      let payload = json["payload"] as? [String: Any],
+                      let status = eventStatus(for: json, payload: payload) else {
+                    continue
+                }
+                latestStatus = status
+            }
+            return latestStatus
+        } catch {
+            return nil
+        }
+    }
+
+    nonisolated private static func eventStatus(
+        for json: [String: Any],
+        payload: [String: Any]
+    ) -> String? {
+        switch (json["type"] as? String, payload["type"] as? String) {
+        case ("event_msg", "user_message"),
+             ("event_msg", "agent_reasoning"),
+             ("response_item", "reasoning"),
+             ("response_item", "custom_tool_call"),
+             ("response_item", "function_call"):
+            return "processing"
+        case ("event_msg", "agent_message"),
+             ("event_msg", "task_complete"),
+             ("event_msg", "turn_aborted"):
+            return "waiting_for_input"
+        case ("response_item", "message") where payload["role"] as? String == "assistant":
+            return "waiting_for_input"
+        default:
+            return nil
+        }
     }
 }

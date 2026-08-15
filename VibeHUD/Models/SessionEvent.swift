@@ -128,6 +128,11 @@ struct ToolCompletionResult: Sendable {
 // MARK: - Hook Event Extensions
 
 extension HookEvent {
+    /// WorkBuddy launches internal prewarm workers that are not user sessions.
+    nonisolated var isDisplayableSession: Bool {
+        source?.lowercased() != "workbuddy" || !sessionId.lowercased().hasPrefix("prewarm-")
+    }
+
     /// Determine the target session phase based on this hook event
     nonisolated func determinePhase() -> SessionPhase {
         // PreCompact takes priority

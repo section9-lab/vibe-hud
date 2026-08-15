@@ -49,6 +49,25 @@ struct HookEventTests {
         #expect(toolFailure.shouldSyncFile)
         #expect(stopFailure.shouldSyncFile)
     }
+
+    @Test("Ignores WorkBuddy prewarm pool sessions")
+    func ignoresWorkBuddyPrewarmPool() {
+        let prewarm = makeEvent(
+            status: "starting",
+            sessionId: "prewarm-wb-pool-1786775838603-b72ed2",
+            cwd: "/",
+            source: "workbuddy"
+        )
+        let task = makeEvent(
+            status: "processing",
+            sessionId: "2fc80cc6-725a-45f3-b018-7ffd85f5f2b8",
+            cwd: "/Users/test/WorkBuddy/task",
+            source: "workbuddy"
+        )
+
+        #expect(!prewarm.isDisplayableSession)
+        #expect(task.isDisplayableSession)
+    }
 }
 
 private func makeEvent(
@@ -56,14 +75,17 @@ private func makeEvent(
     status: String,
     message: String? = nil,
     tool: String? = nil,
-    toolUseId: String? = nil
+    toolUseId: String? = nil,
+    sessionId: String = "session-1",
+    cwd: String = "/tmp/project",
+    source: String = "codex"
 ) -> HookEvent {
     HookEvent(
-        sessionId: "session-1",
-        cwd: "/tmp/project",
+        sessionId: sessionId,
+        cwd: cwd,
         event: event,
         status: status,
-        source: "codex",
+        source: source,
         pid: nil,
         tty: nil,
         transcriptPath: nil,
