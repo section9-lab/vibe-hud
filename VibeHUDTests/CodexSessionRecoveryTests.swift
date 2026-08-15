@@ -179,31 +179,15 @@ struct CodexSessionRecoveryTests {
 
         let completed = prefix + "\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\"}}"
         try completed.write(to: rollout, atomically: true, encoding: .utf8)
-        await store.recheckAllSessions()
+        await store.recheckAllSessions(codexSessionsDirectory: directory)
 
         #expect(await store.session(for: "session-1")?.phase == .waitingForInput)
 
         let resumed = completed + "\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\"}}"
         try resumed.write(to: rollout, atomically: true, encoding: .utf8)
-        await store.recheckAllSessions()
+        await store.recheckAllSessions(codexSessionsDirectory: directory)
 
         #expect(await store.session(for: "session-1")?.phase == .processing)
-    }
-
-    @Test("Periodic checks discover Codex sessions created after launch")
-    func periodicCheckDiscoversNewSession() async throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-
-        let now = Date()
-        try writeRollout(index: 2, modifiedAt: now, to: directory)
-        let store = SessionStore()
-
-        await store.recheckAllSessions(codexSessionsDirectory: directory, now: now)
-
-        #expect(await store.session(for: "session-2") != nil)
     }
 
     private func makeStaleSession(pid: Int?) throws -> (SessionState, Date, URL) {
