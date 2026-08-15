@@ -110,6 +110,12 @@ enum SessionSource: String, Codable, Equatable, Hashable, Sendable {
     nonisolated var brandApplicationBundleIdentifier: String? {
         self == .workbuddy ? "com.workbuddy.workbuddy" : nil
     }
+
+    nonisolated var brandMonochromeApplicationIconRelativePath: String? {
+        self == .workbuddy
+            ? "Contents/Resources/app.asar.unpacked/resources/trayTemplate@2x.png"
+            : nil
+    }
 }
 
 /// Complete state for a single Claude session

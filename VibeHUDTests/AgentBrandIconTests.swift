@@ -26,6 +26,10 @@ struct AgentBrandIconTests {
     func mapsWorkBuddyApplication() {
         #expect(SessionSource.workbuddy.brandAssetName == nil)
         #expect(SessionSource.workbuddy.brandApplicationBundleIdentifier == "com.workbuddy.workbuddy")
+        #expect(
+            SessionSource.workbuddy.brandMonochromeApplicationIconRelativePath
+                == "Contents/Resources/app.asar.unpacked/resources/trayTemplate@2x.png"
+        )
     }
 
     @Test("Renders Codex as a mark instead of a filled tile in settings")
@@ -51,6 +55,34 @@ struct AgentBrandIconTests {
         }
 
         #expect(visiblePixels * 3 < bitmap.pixelsWide * bitmap.pixelsHigh * 2)
+    }
+
+    @Test("Renders Codex in its brand color in the session list")
+    @MainActor
+    func rendersColoredCodexMark() throws {
+        let renderer = ImageRenderer(
+            content: AgentBrandIcon(source: .codex, style: .colored, size: 24)
+        )
+        renderer.scale = 2
+        let image = try #require(renderer.nsImage)
+        let cgImage = try #require(
+            image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        )
+        let bitmap = NSBitmapImageRep(cgImage: cgImage)
+        var hasBrandColor = false
+
+        for x in 0..<bitmap.pixelsWide {
+            for y in 0..<bitmap.pixelsHigh {
+                guard let color = bitmap.colorAt(x: x, y: y), color.alphaComponent > 0.2 else {
+                    continue
+                }
+                if color.blueComponent - color.redComponent > 0.1 {
+                    hasBrandColor = true
+                }
+            }
+        }
+
+        #expect(hasBrandColor)
     }
 
     @Test(

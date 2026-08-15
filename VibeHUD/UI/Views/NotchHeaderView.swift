@@ -34,7 +34,11 @@ struct AgentBrandIcon: View {
 
     var body: some View {
         Group {
-            if let assetName = source.brandAssetName {
+            if style == .monochrome, let monochromeApplicationIcon {
+                Image(nsImage: monochromeApplicationIcon)
+                    .resizable()
+                    .renderingMode(.template)
+            } else if let assetName = source.brandAssetName {
                 Image(assetName)
                     .resizable()
                     .renderingMode(renderingMode)
@@ -59,12 +63,24 @@ struct AgentBrandIcon: View {
     }
 
     private var applicationIcon: NSImage? {
+        guard let applicationURL else { return nil }
+        return NSWorkspace.shared.icon(forFile: applicationURL.path)
+    }
+
+    private var monochromeApplicationIcon: NSImage? {
+        guard let applicationURL,
+              let relativePath = source.brandMonochromeApplicationIconRelativePath else {
+            return nil
+        }
+        return NSImage(contentsOf: applicationURL.appendingPathComponent(relativePath))
+    }
+
+    private var applicationURL: URL? {
         guard let bundleIdentifier = source.brandApplicationBundleIdentifier else { return nil }
         let applicationURL = NSWorkspace.shared.urlForApplication(
             withBundleIdentifier: bundleIdentifier
         ) ?? URL(fileURLWithPath: "/Applications/WorkBuddy.app")
-        guard FileManager.default.fileExists(atPath: applicationURL.path) else { return nil }
-        return NSWorkspace.shared.icon(forFile: applicationURL.path)
+        return FileManager.default.fileExists(atPath: applicationURL.path) ? applicationURL : nil
     }
 }
 
