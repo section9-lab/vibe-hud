@@ -203,7 +203,7 @@ struct InstanceRow: View {
             // Text content
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    SessionSourceIcon(source: session.source, size: 12, animate: session.phase == .processing || session.phase == .compacting)
+                    SessionSourceIcon(source: session.source, size: 12)
 
                     Text(session.displayTitle)
                         .font(.system(size: 13, weight: .medium))
@@ -405,7 +405,9 @@ struct InstanceRow: View {
         case .opencode:
             .white
         case .workbuddy:
-            .orange
+            Color(red: 14 / 255, green: 200 / 255, blue: 169 / 255)
+        case .qwenWork:
+            Color(red: 0.39, green: 0.31, blue: 0.93)
         }
     }
 

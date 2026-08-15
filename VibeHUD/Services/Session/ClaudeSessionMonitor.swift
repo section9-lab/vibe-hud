@@ -81,10 +81,17 @@ class ClaudeSessionMonitor: ObservableObject {
                 }
             }
         )
+
+        QwenWorkSessionMonitor.shared.start { event in
+            Task {
+                await SessionStore.shared.process(.hookReceived(event))
+            }
+        }
     }
 
     func stopMonitoring() {
         HookSocketServer.shared.stop()
+        QwenWorkSessionMonitor.shared.stop()
         Task {
             await SessionStore.shared.stopPeriodicStatusCheck()
         }

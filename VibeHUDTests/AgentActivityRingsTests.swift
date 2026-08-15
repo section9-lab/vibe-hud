@@ -141,6 +141,7 @@ struct AgentActivityRingsTests {
         #expect(SessionSource.pi.activityTint == .gray)
         #expect(SessionSource.opencode.activityTint == .gray)
         #expect(SessionSource.workbuddy.activityTint == .workBuddyGreen)
+        #expect(SessionSource.qwenWork.activityTint == .workBuddyGreen)
         #expect(AgentActivityTint.claudeOrange.rgb == 0xD97757)
         #expect(AgentActivityTint.white.rgb == 0xFFFFFF)
         #expect(AgentActivityTint.gray.rgb == 0x8E8E93)

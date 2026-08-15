@@ -235,3 +235,18 @@ enum WorkBuddyPaths {
         configDir.appendingPathComponent("projects")
     }
 }
+
+enum QwenWorkPaths {
+    nonisolated static var configDir: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".qwenworkcn")
+    }
+
+    nonisolated static var enabledMarker: URL {
+        configDir.appendingPathComponent("vibe-hud-enabled")
+    }
+
+    nonisolated static var databaseFile: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/QwenWorkCN/data/agents.db")
+    }
+}

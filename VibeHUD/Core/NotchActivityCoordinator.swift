@@ -19,6 +19,7 @@ enum NotchActivityType: Equatable {
     case pi
     case opencode
     case workbuddy
+    case qwenWork
     case none
 }
 

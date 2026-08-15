@@ -104,26 +104,29 @@ struct NotchMenuView: View {
                 .buttonStyle(.plain)
 
                 if isHooksExpanded {
-                    MenuToggleRow(icon: "sparkles", label: "Claude", isOn: hookState(for: .claude), isNested: true) {
+                    MenuToggleRow(source: .claude, label: "Claude", isOn: hookState(for: .claude), isNested: true) {
                         toggleHook(.claude)
                     }
-                    MenuToggleRow(icon: "terminal", label: "Codex", isOn: hookState(for: .codex), isNested: true) {
+                    MenuToggleRow(source: .codex, label: "Codex", isOn: hookState(for: .codex), isNested: true) {
                         toggleHook(.codex)
                     }
-                    MenuToggleRow(icon: "cursorarrow.rays", label: "Cursor", isOn: hookState(for: .cursor), isNested: true) {
+                    MenuToggleRow(source: .cursor, label: "Cursor", isOn: hookState(for: .cursor), isNested: true) {
                         toggleHook(.cursor)
                     }
-                    MenuToggleRow(icon: "chevron.left.forwardslash.chevron.right", label: "GitHub Copilot", isOn: hookState(for: .githubCopilot), isNested: true) {
+                    MenuToggleRow(source: .copilot, label: "GitHub Copilot", isOn: hookState(for: .githubCopilot), isNested: true) {
                         toggleHook(.githubCopilot)
                     }
-                    MenuToggleRow(icon: "circle.hexagongrid", label: "Pi", isOn: hookState(for: .pi), isNested: true) {
+                    MenuToggleRow(source: .pi, label: "Pi", isOn: hookState(for: .pi), isNested: true) {
                         toggleHook(.pi)
                     }
-                    MenuToggleRow(icon: "chevron.left.forwardslash.chevron.right", label: "OpenCode", isOn: hookState(for: .openCode), isNested: true) {
+                    MenuToggleRow(source: .opencode, label: "OpenCode", isOn: hookState(for: .openCode), isNested: true) {
                         toggleHook(.openCode)
                     }
-                    MenuToggleRow(icon: "person.crop.circle.badge.checkmark", label: "WorkBuddy", isOn: hookState(for: .workBuddy), isNested: true) {
+                    MenuToggleRow(source: .workbuddy, label: "WorkBuddy", isOn: hookState(for: .workBuddy), isNested: true) {
                         toggleHook(.workBuddy)
+                    }
+                    MenuToggleRow(source: .qwenWork, label: "千问办公", isOn: hookState(for: .qwenWork), isNested: true) {
+                        toggleHook(.qwenWork)
                     }
                 }
 
@@ -572,7 +575,8 @@ struct MenuRow: View {
 }
 
 struct MenuToggleRow: View {
-    let icon: String
+    let icon: String?
+    let source: SessionSource?
     let label: String
     let isOn: Bool
     let isNested: Bool
@@ -588,6 +592,22 @@ struct MenuToggleRow: View {
         action: @escaping () -> Void
     ) {
         self.icon = icon
+        self.source = nil
+        self.label = label
+        self.isOn = isOn
+        self.isNested = isNested
+        self.action = action
+    }
+
+    init(
+        source: SessionSource,
+        label: String,
+        isOn: Bool,
+        isNested: Bool = false,
+        action: @escaping () -> Void
+    ) {
+        self.icon = nil
+        self.source = source
         self.label = label
         self.isOn = isOn
         self.isNested = isNested
@@ -597,10 +617,15 @@ struct MenuToggleRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 12))
-                    .foregroundColor(textColor)
-                    .frame(width: 16)
+                if let source {
+                    AgentBrandIcon(source: source, style: .monochrome, size: 14)
+                        .frame(width: 16)
+                } else if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 12))
+                        .foregroundColor(textColor)
+                        .frame(width: 16)
+                }
 
                 Text(label)
                     .font(.system(size: 13, weight: .medium))

@@ -25,7 +25,7 @@ extension SessionSource {
             .white
         case .cursor, .pi, .opencode:
             .gray
-        case .workbuddy:
+        case .workbuddy, .qwenWork:
             .workBuddyGreen
         }
     }
@@ -39,6 +39,7 @@ extension SessionSource {
         case .pi: 4
         case .opencode: 5
         case .workbuddy: 6
+        case .qwenWork: 7
         }
     }
 }

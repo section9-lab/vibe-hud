@@ -90,7 +90,7 @@ struct NotchView: View {
         // Expand for processing activity
         if activityCoordinator.expandingActivity.show {
             switch activityCoordinator.expandingActivity.type {
-            case .claude, .codex, .cursor, .copilot, .pi, .opencode, .workbuddy:
+            case .claude, .codex, .cursor, .copilot, .pi, .opencode, .workbuddy, .qwenWork:
                 let baseWidth = 2 * max(0, closedNotchSize.height - 12) + 20
                 return baseWidth + permissionIndicatorWidth
             case .none:
@@ -518,6 +518,8 @@ struct NotchView: View {
             .opencode
         case .workbuddy:
             .workbuddy
+        case .qwenWork:
+            .qwenWork
         }
     }
 

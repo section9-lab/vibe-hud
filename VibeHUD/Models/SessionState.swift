@@ -16,6 +16,7 @@ enum SessionSource: String, Codable, Equatable, Hashable, Sendable {
     case pi
     case opencode
     case workbuddy
+    case qwenWork = "qwenwork"
 
     nonisolated init(rawSource: String?, transcriptPath: String? = nil) {
         if let normalized = rawSource?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
@@ -41,6 +42,9 @@ enum SessionSource: String, Codable, Equatable, Hashable, Sendable {
             case "workbuddy":
                 self = .workbuddy
                 return
+            case "qwenwork", "qwenworkcn":
+                self = .qwenWork
+                return
             default:
                 break
             }
@@ -58,6 +62,10 @@ enum SessionSource: String, Codable, Equatable, Hashable, Sendable {
             }
             if lowercasedPath.contains("/.workbuddy/projects/") {
                 self = .workbuddy
+                return
+            }
+            if lowercasedPath.contains("/.qwenworkcn/projects/") {
+                self = .qwenWork
                 return
             }
         }
@@ -81,7 +89,26 @@ enum SessionSource: String, Codable, Equatable, Hashable, Sendable {
             "OpenCode"
         case .workbuddy:
             "WorkBuddy"
+        case .qwenWork:
+            "千问办公"
         }
+    }
+
+    nonisolated var brandAssetName: String? {
+        switch self {
+        case .claude: "AgentClaude"
+        case .codex: "AgentCodex"
+        case .cursor: "AgentCursor"
+        case .copilot: "AgentGitHubCopilot"
+        case .pi: "AgentPi"
+        case .opencode: "AgentOpenCode"
+        case .workbuddy: nil
+        case .qwenWork: "AgentQwenWork"
+        }
+    }
+
+    nonisolated var brandApplicationBundleIdentifier: String? {
+        self == .workbuddy ? "com.workbuddy.workbuddy" : nil
     }
 }
 

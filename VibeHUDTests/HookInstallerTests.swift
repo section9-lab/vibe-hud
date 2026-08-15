@@ -89,6 +89,20 @@ struct HookInstallerTests {
             "python3 '/tmp/vibe-hud-state.py' --source workbuddy",
         ])
     }
+
+    @Test("Toggles Qwen Work database monitoring")
+    func togglesQwenWorkMonitoring() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let marker = directory.appendingPathComponent("vibe-hud-enabled")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        HookInstaller.setQwenWorkMonitoring(enabled: true, markerURL: marker)
+        #expect(FileManager.default.fileExists(atPath: marker.path))
+
+        HookInstaller.setQwenWorkMonitoring(enabled: false, markerURL: marker)
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+    }
 }
 
 private func temporaryFileURL() -> URL {

@@ -15,6 +15,7 @@ enum HookAgent: CaseIterable {
     case pi
     case openCode
     case workBuddy
+    case qwenWork
 }
 
 struct HookInstaller {
@@ -65,6 +66,8 @@ struct HookInstaller {
             installOpenCodeHooksIfNeeded()
         case .workBuddy:
             installWorkBuddyHooksIfNeeded()
+        case .qwenWork:
+            setQwenWorkMonitoring(enabled: true)
         }
     }
 
@@ -90,6 +93,8 @@ struct HookInstaller {
         case .workBuddy:
             try? FileManager.default.removeItem(at: WorkBuddyPaths.hookScriptPath)
             removeHooks(at: WorkBuddyPaths.settingsFile)
+        case .qwenWork:
+            setQwenWorkMonitoring(enabled: false)
         }
     }
 
@@ -109,6 +114,23 @@ struct HookInstaller {
             isInstalledOpenCode(at: OpenCodePaths.configFile)
         case .workBuddy:
             isInstalled(at: WorkBuddyPaths.settingsFile)
+        case .qwenWork:
+            FileManager.default.fileExists(atPath: QwenWorkPaths.enabledMarker.path)
+        }
+    }
+
+    static func setQwenWorkMonitoring(
+        enabled: Bool,
+        markerURL: URL = QwenWorkPaths.enabledMarker
+    ) {
+        if enabled {
+            try? FileManager.default.createDirectory(
+                at: markerURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try? "enabled\n".write(to: markerURL, atomically: true, encoding: .utf8)
+        } else {
+            try? FileManager.default.removeItem(at: markerURL)
         }
     }
 

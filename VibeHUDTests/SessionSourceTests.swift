@@ -16,6 +16,8 @@ struct SessionSourceTests {
             ("pi", SessionSource.pi),
             ("opencode", SessionSource.opencode),
             ("workbuddy", SessionSource.workbuddy),
+            ("qwenwork", SessionSource.qwenWork),
+            ("qwenworkcn", SessionSource.qwenWork),
         ]
     )
     func mapsSourceAlias(input: String, expected: SessionSource) {
@@ -30,5 +32,16 @@ struct SessionSourceTests {
         )
 
         #expect(source == .codex)
+    }
+
+    @Test("Infers Qwen Work from its transcript path")
+    func infersQwenWorkFromTranscript() {
+        let source = SessionSource(
+            rawSource: nil,
+            transcriptPath: "/Users/test/.qwenworkcn/projects/example/session.jsonl"
+        )
+
+        #expect(source == .qwenWork)
+        #expect(source.displayName == "千问办公")
     }
 }
