@@ -33,6 +33,8 @@ struct HookEvent: Codable, Sendable {
     let message: String?
     let eventId: String?
     let eventTimestamp: TimeInterval?
+    let turnId: String?
+    let stopHookActive: Bool?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
@@ -49,6 +51,8 @@ struct HookEvent: Codable, Sendable {
         case message
         case eventId = "event_id"
         case eventTimestamp = "event_timestamp"
+        case turnId = "turn_id"
+        case stopHookActive = "stop_hook_active"
     }
 
     /// Create a copy with updated toolUseId
@@ -71,7 +75,9 @@ struct HookEvent: Codable, Sendable {
         notificationType: String?,
         message: String?,
         eventId: String? = nil,
-        eventTimestamp: TimeInterval? = nil
+        eventTimestamp: TimeInterval? = nil,
+        turnId: String? = nil,
+        stopHookActive: Bool? = nil
     ) {
         self.sessionId = sessionId
         self.cwd = cwd
@@ -92,6 +98,8 @@ struct HookEvent: Codable, Sendable {
         self.message = message
         self.eventId = eventId
         self.eventTimestamp = eventTimestamp
+        self.turnId = turnId
+        self.stopHookActive = stopHookActive
     }
 
     var sessionPhase: SessionPhase {
@@ -499,7 +507,9 @@ class HookSocketServer {
                 notificationType: event.notificationType,
                 message: event.message,
                 eventId: event.eventId,
-                eventTimestamp: event.eventTimestamp
+                eventTimestamp: event.eventTimestamp,
+                turnId: event.turnId,
+                stopHookActive: event.stopHookActive
             )
 
             let pending = PendingPermission(

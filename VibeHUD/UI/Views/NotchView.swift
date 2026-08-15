@@ -59,6 +59,10 @@ struct NotchView: View {
         sessionMonitor.instances.contains { $0.phase == .processing || $0.phase == .compacting }
     }
 
+    private var agentActivitySummary: AgentActivitySummary {
+        AgentActivitySummary(sessions: sessionMonitor.instances)
+    }
+
     /// Whether any session has a pending permission request
     private var hasPendingPermission: Bool {
         sessionMonitor.instances.contains { $0.phase.isWaitingForApproval }
@@ -221,10 +225,6 @@ struct NotchView: View {
 
     // MARK: - Notch Layout
 
-    private var isProcessing: Bool {
-        activityCoordinator.expandingActivity.show && activityCoordinator.expandingActivity.type != .none
-    }
-
     /// Keep a persistent status icon visible while the notch is closed.
     private var showClosedActivity: Bool {
         true
@@ -233,7 +233,7 @@ struct NotchView: View {
     @ViewBuilder
     private var notchLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header row - always present, contains crab and spinner that persist across states
+            // Header row - always present so activity remains visible across states
             headerRow
                 .frame(height: max(24, closedNotchSize.height))
 
@@ -258,11 +258,11 @@ struct NotchView: View {
     @ViewBuilder
     private var headerRow: some View {
         HStack(spacing: 0) {
-            // Left side - crab + optional permission indicator (visible when processing, pending, or waiting for input)
+            // Left side - agent activity + optional permission indicator
             if showClosedActivity {
                 HStack(spacing: 4) {
-                    SessionSourceIcon(source: primaryDisplayedSource, size: 14, animate: isProcessing)
-                        .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: showClosedActivity)
+                    AgentActivityRings(summary: agentActivitySummary, size: 26)
+                        .matchedGeometryEffect(id: "agent-activity", in: activityNamespace, isSource: showClosedActivity)
 
                     // Permission indicator only (amber) - waiting for input shows checkmark on right
                     if hasPendingPermission {
@@ -295,7 +295,7 @@ struct NotchView: View {
     }
 
     private var sideWidth: CGFloat {
-        24
+        32
     }
 
     /// Keep the closed state's right edge aligned with the physical notch.
@@ -309,11 +309,10 @@ struct NotchView: View {
     @ViewBuilder
     private var openedHeaderContent: some View {
         HStack(spacing: 12) {
-            // Show static crab only if not showing activity in headerRow
-            // (headerRow handles crab + indicator when showClosedActivity is true)
+            // Fall back to the primary source icon if persistent activity is disabled.
             if !showClosedActivity {
                 SessionSourceIcon(source: primaryDisplayedSource, size: 14)
-                    .matchedGeometryEffect(id: "crab", in: activityNamespace, isSource: !showClosedActivity)
+                    .matchedGeometryEffect(id: "agent-activity", in: activityNamespace, isSource: !showClosedActivity)
                     .padding(.leading, 8)
             }
 

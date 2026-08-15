@@ -36,6 +36,38 @@ struct CodexSessionRecoveryTests {
         #expect(recovered?.status == "processing")
     }
 
+    @Test(
+        "Assistant output does not complete an active rollout",
+        arguments: [
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"agent_message\",\"phase\":\"commentary\"}}",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"phase\":\"commentary\"}}"
+        ]
+    )
+    func assistantOutputStaysProcessing(event: String) {
+        let recovered = CodexSessionRecovery.parseContent(
+            prefix + "\n" + event,
+            transcriptPath: "/tmp/rollout.jsonl"
+        )
+
+        #expect(recovered?.status == "processing")
+    }
+
+    @Test("A new Codex turn supersedes the previous completion")
+    func newTurnSupersedesCompletion() {
+        let content = prefix + """
+
+        {"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1"}}
+        {"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-2"}}
+        """
+
+        let recovered = CodexSessionRecovery.parseContent(
+            content,
+            transcriptPath: "/tmp/rollout.jsonl"
+        )
+
+        #expect(recovered?.status == "processing")
+    }
+
     @Test("Rollouts without metadata are ignored")
     func missingMetadataIsIgnored() {
         let recovered = CodexSessionRecovery.parseContent(
@@ -158,8 +190,8 @@ struct CodexSessionRecoveryTests {
         #expect(SessionStore.isStaleCodexSession(session))
     }
 
-    @Test("Periodic checks refresh a Codex session after its turn completes")
-    func periodicCheckRefreshesCompletedTurn() async throws {
+    @Test("Rollout completion waits for the fallback delay")
+    func rolloutCompletionUsesFallbackDelay() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -176,18 +208,130 @@ struct CodexSessionRecoveryTests {
             phase: .processing
         )
         let store = SessionStore(initialSessions: [session])
+        let now = Date()
 
-        let completed = prefix + "\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\"}}"
+        let completed = prefix + "\n{\"timestamp\":\"2026-08-15T12:00:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"turn-1\"}}"
         try completed.write(to: rollout, atomically: true, encoding: .utf8)
-        await store.recheckAllSessions(codexSessionsDirectory: directory)
+        await store.recheckAllSessions(codexSessionsDirectory: directory, now: now)
+
+        #expect(await store.session(for: "session-1")?.phase == .processing)
+
+        await store.recheckAllSessions(
+            codexSessionsDirectory: directory,
+            now: now.addingTimeInterval(7)
+        )
+
+        #expect(await store.session(for: "session-1")?.phase == .processing)
+
+        await store.recheckAllSessions(
+            codexSessionsDirectory: directory,
+            now: now.addingTimeInterval(8)
+        )
 
         #expect(await store.session(for: "session-1")?.phase == .waitingForInput)
 
-        let resumed = completed + "\n{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\"}}"
+        let resumed = completed + """
+
+        {"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-2"}}
+        {"type":"event_msg","payload":{"type":"user_message"}}
+        """
         try resumed.write(to: rollout, atomically: true, encoding: .utf8)
-        await store.recheckAllSessions(codexSessionsDirectory: directory)
+        await store.recheckAllSessions(
+            codexSessionsDirectory: directory,
+            now: now.addingTimeInterval(9)
+        )
 
         #expect(await store.session(for: "session-1")?.phase == .processing)
+    }
+
+    @Test("A newer hook turn cancels a stale rollout completion")
+    @MainActor
+    func newerHookTurnCancelsCompletion() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let rollout = directory.appendingPathComponent("rollout-live.jsonl")
+        let completed = prefix + "\n{\"timestamp\":\"2026-08-15T12:00:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"turn-1\"}}"
+        try completed.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let session = SessionState(
+            sessionId: "session-1",
+            cwd: "/tmp/project",
+            source: .codex,
+            transcriptPath: rollout.path,
+            phase: .processing
+        )
+        let store = SessionStore(initialSessions: [session])
+        let now = Date()
+
+        await store.recheckAllSessions(codexSessionsDirectory: directory, now: now)
+
+        let prompt = try JSONDecoder().decode(HookEvent.self, from: Data("""
+        {
+          "session_id": "session-1",
+          "cwd": "/tmp/project",
+          "event": "UserPromptSubmit",
+          "status": "processing",
+          "source": "codex",
+          "turn_id": "turn-2"
+        }
+        """.utf8))
+        await store.process(.hookReceived(prompt))
+
+        await store.recheckAllSessions(
+            codexSessionsDirectory: directory,
+            now: now.addingTimeInterval(20)
+        )
+
+        #expect(await store.session(for: "session-1")?.phase == .processing)
+    }
+
+    @Test(
+        "Commentary from a stopped hook turn cannot resume the session",
+        arguments: [
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"agent_message\",\"phase\":\"commentary\"}}",
+            """
+            {"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
+            {"type":"event_msg","payload":{"type":"agent_message","phase":"commentary"}}
+            """
+        ]
+    )
+    @MainActor
+    func stoppedTurnCommentaryDoesNotResume(rolloutEvents: String) async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let rollout = directory.appendingPathComponent("rollout-live.jsonl")
+        let content = prefix + "\n" + rolloutEvents
+        try content.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let session = SessionState(
+            sessionId: "session-1",
+            cwd: "/tmp/project",
+            source: .codex,
+            transcriptPath: rollout.path,
+            phase: .processing
+        )
+        let store = SessionStore(initialSessions: [session])
+        let stop = try JSONDecoder().decode(HookEvent.self, from: Data("""
+        {
+          "session_id": "session-1",
+          "cwd": "/tmp/project",
+          "event": "Stop",
+          "status": "waiting_for_input",
+          "source": "codex",
+          "turn_id": "turn-1"
+        }
+        """.utf8))
+
+        await store.process(.hookReceived(stop))
+        await store.recheckAllSessions(codexSessionsDirectory: directory)
+
+        #expect(await store.session(for: "session-1")?.phase == .waitingForInput)
     }
 
     private func makeStaleSession(pid: Int?) throws -> (SessionState, Date, URL) {

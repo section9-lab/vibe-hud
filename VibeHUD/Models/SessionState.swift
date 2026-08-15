@@ -8,7 +8,7 @@
 
 import Foundation
 
-enum SessionSource: String, Codable, Equatable, Sendable {
+enum SessionSource: String, Codable, Equatable, Hashable, Sendable {
     case claude
     case codex
     case cursor

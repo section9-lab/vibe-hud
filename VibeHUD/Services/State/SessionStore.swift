@@ -11,6 +11,18 @@ import Foundation
 import Mixpanel
 import os.log
 
+private struct PendingCodexCompletion: Sendable {
+    let key: String
+    let turnId: String?
+    let observedAt: Date
+
+    nonisolated init(key: String, turnId: String?, observedAt: Date) {
+        self.key = key
+        self.turnId = turnId
+        self.observedAt = observedAt
+    }
+}
+
 /// Central state manager for all Claude sessions
 /// Uses Swift actor for thread-safe state mutations
 actor SessionStore {
@@ -37,6 +49,14 @@ actor SessionStore {
 
     /// Rollouts already examined for Codex session discovery.
     private var examinedCodexTranscriptPaths = Set<String>()
+
+    /// Terminal rollout events waiting for the Codex fallback delay.
+    private var pendingCodexCompletions: [String: PendingCodexCompletion] = [:]
+
+    /// Most recent Codex turn identity observed from hooks or rollout events.
+    private var activeCodexTurnIds: [String: String] = [:]
+
+    private let codexCompletionFallbackDelay: TimeInterval = 8
 
     /// Status check interval (3 seconds)
     private let statusCheckIntervalSeconds: UInt64 = 3
@@ -133,6 +153,7 @@ actor SessionStore {
         guard event.isDisplayableSession else {
             sessions.removeValue(forKey: sessionId)
             cancelPendingSync(sessionId: sessionId)
+            clearCodexCompletionTracking(sessionId: sessionId)
             return
         }
         let isNewSession = sessions[sessionId] == nil
@@ -169,6 +190,9 @@ actor SessionStore {
             session.transcriptPath = transcriptPath
         }
         session.source = SessionSource(rawSource: event.source, transcriptPath: session.transcriptPath)
+        if session.source == .codex, let turnId = event.turnId, !turnId.isEmpty {
+            activeCodexTurnIds[sessionId] = turnId
+        }
         if let terminalBundleId = event.terminalBundleId, !terminalBundleId.isEmpty {
             session.terminalBundleId = terminalBundleId
         }
@@ -186,10 +210,16 @@ actor SessionStore {
         if event.status == "ended" {
             sessions.removeValue(forKey: sessionId)
             cancelPendingSync(sessionId: sessionId)
+            clearCodexCompletionTracking(sessionId: sessionId)
             return
         }
 
         let newPhase = event.determinePhase()
+
+        if session.source == .codex
+            && (event.event == "UserPromptSubmit" || event.event == "Stop") {
+            pendingCodexCompletions.removeValue(forKey: sessionId)
+        }
 
         if session.phase.canTransition(to: newPhase) {
             session.phase = newPhase
@@ -980,6 +1010,7 @@ actor SessionStore {
     private func processSessionEnd(sessionId: String) async {
         sessions.removeValue(forKey: sessionId)
         cancelPendingSync(sessionId: sessionId)
+        clearCodexCompletionTracking(sessionId: sessionId)
     }
 
     // MARK: - History Loading
@@ -1101,6 +1132,11 @@ actor SessionStore {
         pendingSyncs.removeValue(forKey: sessionId)
     }
 
+    private func clearCodexCompletionTracking(sessionId: String) {
+        pendingCodexCompletions.removeValue(forKey: sessionId)
+        activeCodexTurnIds.removeValue(forKey: sessionId)
+    }
+
     // MARK: - Periodic Status Check
 
     /// Restore recently active Codex sessions after VibeHUD starts.
@@ -1188,6 +1224,7 @@ actor SessionStore {
             if session.phase == .ended {
                 sessions.removeValue(forKey: sessionId)
                 cancelPendingSync(sessionId: sessionId)
+                clearCodexCompletionTracking(sessionId: sessionId)
                 stateChanged = true
                 continue
             }
@@ -1198,6 +1235,7 @@ actor SessionStore {
                     Self.logger.info("Process \(pid) no longer running, ending session \(sessionId.prefix(8))")
                     sessions.removeValue(forKey: sessionId)
                     cancelPendingSync(sessionId: sessionId)
+                    clearCodexCompletionTracking(sessionId: sessionId)
                     stateChanged = true
                     continue
                 }
@@ -1208,6 +1246,7 @@ actor SessionStore {
                 sessions.removeValue(forKey: sessionId)
                 examinedCodexTranscriptPaths.removeAll()
                 cancelPendingSync(sessionId: sessionId)
+                clearCodexCompletionTracking(sessionId: sessionId)
                 stateChanged = true
                 continue
             }
@@ -1222,9 +1261,47 @@ actor SessionStore {
             if session.source == .codex,
                !hasHookManagedPhase,
                let transcriptPath = session.transcriptPath,
-               let status = CodexSessionRecovery.currentStatus(at: transcriptPath) {
-                let newPhase: SessionPhase = status == "processing" ? .processing : .waitingForInput
-                if session.phase != newPhase, session.phase.canTransition(to: newPhase) {
+               let rolloutState = CodexSessionRecovery.currentState(at: transcriptPath) {
+                let activeTurnId = activeCodexTurnIds[sessionId]
+                var newPhase: SessionPhase?
+
+                if !rolloutState.isTerminal {
+                    pendingCodexCompletions.removeValue(forKey: sessionId)
+                    let belongsToStoppedTurn = session.phase == .waitingForInput
+                        && (rolloutState.turnId == nil || rolloutState.turnId == activeTurnId)
+                    if !belongsToStoppedTurn {
+                        if let turnId = rolloutState.turnId {
+                            activeCodexTurnIds[sessionId] = turnId
+                        }
+                        newPhase = .processing
+                    }
+                } else if let completionKey = rolloutState.completionKey {
+                    let belongsToOlderTurn = activeTurnId != nil
+                        && rolloutState.turnId != nil
+                        && rolloutState.turnId != activeTurnId
+                    if belongsToOlderTurn || session.phase == .waitingForInput {
+                        pendingCodexCompletions.removeValue(forKey: sessionId)
+                    } else if let pending = pendingCodexCompletions[sessionId],
+                              pending.key == completionKey {
+                        if now.timeIntervalSince(pending.observedAt) >= codexCompletionFallbackDelay {
+                            pendingCodexCompletions.removeValue(forKey: sessionId)
+                            if let turnId = pending.turnId {
+                                activeCodexTurnIds[sessionId] = turnId
+                            }
+                            newPhase = .waitingForInput
+                        }
+                    } else {
+                        pendingCodexCompletions[sessionId] = PendingCodexCompletion(
+                            key: completionKey,
+                            turnId: rolloutState.turnId,
+                            observedAt: now
+                        )
+                    }
+                }
+
+                if let newPhase,
+                   session.phase != newPhase,
+                   session.phase.canTransition(to: newPhase) {
                     session.phase = newPhase
                     sessions[sessionId] = session
                     stateChanged = true

@@ -68,6 +68,29 @@ struct HookEventTests {
         #expect(!prewarm.isDisplayableSession)
         #expect(task.isDisplayableSession)
     }
+
+    @Test("Preserves Codex turn identity and Stop hook state")
+    @MainActor
+    func preservesCodexTurnMetadata() throws {
+        let data = Data("""
+        {
+          "session_id": "session-1",
+          "cwd": "/tmp/project",
+          "event": "Stop",
+          "status": "waiting_for_input",
+          "source": "codex",
+          "turn_id": "turn-1",
+          "stop_hook_active": true
+        }
+        """.utf8)
+
+        let event = try JSONDecoder().decode(HookEvent.self, from: data)
+        let encoded = try JSONEncoder().encode(event)
+        let json = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+
+        #expect(json["turn_id"] as? String == "turn-1")
+        #expect(json["stop_hook_active"] as? Bool == true)
+    }
 }
 
 private func makeEvent(

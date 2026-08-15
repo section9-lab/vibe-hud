@@ -303,6 +303,12 @@ def main():
         "tmux_socket": tmux_socket,
         "event_id": data.get("hook_event_id") or data.get("hookEventId"),
         "event_timestamp": float(source_timestamp),
+        "turn_id": data.get("turn_id") or data.get("turnId"),
+        "stop_hook_active": (
+            data.get("stop_hook_active")
+            if "stop_hook_active" in data
+            else data.get("stopHookActive")
+        ),
     }
 
     # Map events to status

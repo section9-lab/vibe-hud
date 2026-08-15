@@ -26,6 +26,22 @@ struct CodexSessionRecoveryScan: Sendable {
     let examinedTranscriptPaths: Set<String>
 }
 
+struct CodexRolloutState: Equatable, Sendable {
+    let status: String
+    let turnId: String?
+    let completionKey: String?
+
+    nonisolated init(status: String, turnId: String?, completionKey: String?) {
+        self.status = status
+        self.turnId = turnId
+        self.completionKey = completionKey
+    }
+
+    nonisolated var isTerminal: Bool {
+        completionKey != nil
+    }
+}
+
 enum CodexSessionRecovery {
     nonisolated static let maximumSessionAge: TimeInterval = 15 * 60
     nonisolated static let maximumSessionCount = 8
@@ -138,7 +154,7 @@ enum CodexSessionRecovery {
         )
     }
 
-    nonisolated static func currentStatus(at transcriptPath: String) -> String? {
+    nonisolated static func currentState(at transcriptPath: String) -> CodexRolloutState? {
         guard let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: transcriptPath)) else {
             return nil
         }
@@ -150,17 +166,22 @@ enum CodexSessionRecovery {
             try handle.seek(toOffset: offset)
             guard let data = try handle.readToEnd() else { return nil }
 
-            var latestStatus: String?
+            var currentTurnId: String?
+            var latestState: CodexRolloutState?
             for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
                 guard let lineData = line.data(using: .utf8),
                       let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                      let payload = json["payload"] as? [String: Any],
-                      let status = eventStatus(for: json, payload: payload) else {
+                      let payload = json["payload"] as? [String: Any] else {
                     continue
                 }
-                latestStatus = status
+                if let turnId = payload["turn_id"] as? String, !turnId.isEmpty {
+                    currentTurnId = turnId
+                }
+                if let state = eventState(for: json, payload: payload, turnId: currentTurnId) {
+                    latestState = state
+                }
             }
-            return latestStatus
+            return latestState
         } catch {
             return nil
         }
@@ -170,19 +191,39 @@ enum CodexSessionRecovery {
         for json: [String: Any],
         payload: [String: Any]
     ) -> String? {
+        eventState(
+            for: json,
+            payload: payload,
+            turnId: payload["turn_id"] as? String
+        )?.status
+    }
+
+    nonisolated private static func eventState(
+        for json: [String: Any],
+        payload: [String: Any],
+        turnId: String?
+    ) -> CodexRolloutState? {
         switch (json["type"] as? String, payload["type"] as? String) {
-        case ("event_msg", "user_message"),
+        case ("event_msg", "task_started"),
+             ("event_msg", "user_message"),
              ("event_msg", "agent_reasoning"),
+             ("event_msg", "agent_message"),
              ("response_item", "reasoning"),
              ("response_item", "custom_tool_call"),
              ("response_item", "function_call"):
-            return "processing"
-        case ("event_msg", "agent_message"),
-             ("event_msg", "task_complete"),
+            return CodexRolloutState(status: "processing", turnId: turnId, completionKey: nil)
+        case ("event_msg", "task_complete"),
              ("event_msg", "turn_aborted"):
-            return "waiting_for_input"
+            let eventType = payload["type"] as? String ?? "terminal"
+            let timestamp = json["timestamp"] as? String ?? ""
+            let completionKey = [eventType, turnId ?? "", timestamp].joined(separator: "|")
+            return CodexRolloutState(
+                status: "waiting_for_input",
+                turnId: turnId,
+                completionKey: completionKey
+            )
         case ("response_item", "message") where payload["role"] as? String == "assistant":
-            return "waiting_for_input"
+            return CodexRolloutState(status: "processing", turnId: turnId, completionKey: nil)
         default:
             return nil
         }
