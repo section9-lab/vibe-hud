@@ -234,6 +234,10 @@ enum WorkBuddyPaths {
     nonisolated static var projectsDir: URL {
         configDir.appendingPathComponent("projects")
     }
+
+    nonisolated static var sessionRuntimeDir: URL {
+        configDir.appendingPathComponent("sessions")
+    }
 }
 
 enum QwenWorkPaths {

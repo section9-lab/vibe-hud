@@ -28,6 +28,31 @@ struct AgentBrandIconTests {
         #expect(SessionSource.workbuddy.brandApplicationBundleIdentifier == "com.workbuddy.workbuddy")
     }
 
+    @Test("Renders Codex as a mark instead of a filled tile in settings")
+    @MainActor
+    func rendersUnframedCodexMark() throws {
+        let renderer = ImageRenderer(
+            content: AgentBrandIcon(source: .codex, style: .monochrome, size: 24)
+        )
+        renderer.scale = 2
+        let image = try #require(renderer.nsImage)
+        let cgImage = try #require(
+            image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        )
+        let bitmap = NSBitmapImageRep(cgImage: cgImage)
+        var visiblePixels = 0
+
+        for x in 0..<bitmap.pixelsWide {
+            for y in 0..<bitmap.pixelsHigh {
+                if bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0 > 0.2 {
+                    visiblePixels += 1
+                }
+            }
+        }
+
+        #expect(visiblePixels * 3 < bitmap.pixelsWide * bitmap.pixelsHigh * 2)
+    }
+
     @Test(
         "Renders settings icons as white templates",
         arguments: [
