@@ -35,12 +35,12 @@ struct AgentActivityRings: View {
             }
 
             Text("\(summary.runningSessionCount)")
-                .font(.system(size: size * 0.25, weight: .bold, design: .rounded))
+                .font(.system(size: size * 0.35, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.55)
-                .frame(width: size * 0.29, height: size * 0.29)
+                .frame(width: size * 0.42, height: size * 0.42)
         }
         .frame(width: size, height: size)
         .accessibilityElement(children: .ignore)

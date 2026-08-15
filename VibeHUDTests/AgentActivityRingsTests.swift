@@ -165,6 +165,43 @@ struct AgentActivityRingsTests {
         #expect(renderer.nsImage?.size == NSSize(width: 26, height: 26))
     }
 
+    @Test("Renders a readable center count")
+    @MainActor
+    func rendersReadableCenterCount() throws {
+        let sessions = (0..<8).map {
+            session("claude-\($0)", source: .claude, phase: .processing)
+        }
+        let renderer = ImageRenderer(
+            content: AgentActivityRings(
+                summary: AgentActivitySummary(sessions: sessions),
+                size: 26
+            )
+            .frame(width: 26, height: 26)
+            .background(.black)
+        )
+        renderer.scale = 2
+
+        let image = try #require(renderer.nsImage)
+        let cgImage = try #require(
+            image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        )
+        let bitmap = NSBitmapImageRep(cgImage: cgImage)
+        let centerX = bitmap.pixelsWide / 2
+        let centerY = bitmap.pixelsHigh / 2
+        var brightPixels = 0
+
+        for x in (centerX - 10)..<(centerX + 10) {
+            for y in (centerY - 10)..<(centerY + 10) {
+                guard let color = bitmap.colorAt(x: x, y: y) else { continue }
+                if color.brightnessComponent > 0.65, color.alphaComponent > 0.5 {
+                    brightPixels += 1
+                }
+            }
+        }
+
+        #expect(brightPixels >= 45)
+    }
+
     private func session(
         _ id: String,
         source: SessionSource,
