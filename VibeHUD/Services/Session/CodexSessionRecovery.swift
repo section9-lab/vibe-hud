@@ -59,7 +59,19 @@ enum CodexSessionRecovery {
             return left > right
         }
 
-        return Array(rollouts.lazy.compactMap(parse).prefix(maximumSessionCount))
+        var recoveredSessions: [RecoveredCodexSession] = []
+        var recoveredIds = Set<String>()
+        for rollout in rollouts {
+            guard let recovered = parse(rollout),
+                  recoveredIds.insert(recovered.sessionId).inserted else {
+                continue
+            }
+            recoveredSessions.append(recovered)
+            if recoveredSessions.count == maximumSessionCount {
+                break
+            }
+        }
+        return recoveredSessions
     }
 
     nonisolated private static func parse(_ rollout: URL) -> RecoveredCodexSession? {

@@ -75,6 +75,39 @@ struct CodexSessionRecoveryTests {
         #expect(!recovered.contains { $0.sessionId == "session-99" })
     }
 
+    @Test("Duplicate child rollouts do not consume the parent session limit")
+    func deduplicatesParentSessionsBeforeLimit() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let now = Date(timeIntervalSince1970: 10_000)
+        for index in 0..<8 {
+            let rollout = directory.appendingPathComponent("rollout-child-\(index).jsonl")
+            let content = """
+            {"type":"session_meta","payload":{"id":"child-\(index)","cwd":"/tmp/project","source":{"subagent":{"thread_spawn":{"parent_thread_id":"shared-parent"}}}}}
+            {"type":"session_meta","payload":{"id":"shared-parent","cwd":"/tmp/project","source":"vscode"}}
+            {"type":"event_msg","payload":{"type":"agent_reasoning"}}
+            """
+            try content.write(to: rollout, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes(
+                [.modificationDate: now.addingTimeInterval(TimeInterval(index + 1))],
+                ofItemAtPath: rollout.path
+            )
+        }
+        for index in 0..<8 {
+            try writeRollout(index: index, modifiedAt: now.addingTimeInterval(TimeInterval(-index)), to: directory)
+        }
+
+        let recovered = CodexSessionRecovery.recentSessions(in: directory, now: now)
+
+        #expect(recovered.count == 8)
+        #expect(Set(recovered.map(\.sessionId)).count == 8)
+        #expect(recovered.first?.sessionId == "shared-parent")
+        #expect(recovered.contains { $0.sessionId == "session-6" })
+    }
+
     @Test("Detects a stale recovered Codex session without a pid")
     func detectsStalePidlessSession() throws {
         let (session, now, directory) = try makeStaleSession(pid: nil)
