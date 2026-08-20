@@ -9,7 +9,7 @@ struct AgentBrandIconTests {
         "Maps agents to packaged LobeHub assets",
         arguments: [
             (SessionSource.claude, "AgentClaude"),
-            (SessionSource.codex, "AgentCodex"),
+            (SessionSource.codex, "AgentGPT"),
             (SessionSource.cursor, "AgentCursor"),
             (SessionSource.copilot, "AgentGitHubCopilot"),
             (SessionSource.pi, "AgentPi"),
@@ -32,9 +32,9 @@ struct AgentBrandIconTests {
         )
     }
 
-    @Test("Renders Codex as a mark instead of a filled tile in settings")
+    @Test("Renders the GPT mark instead of a filled tile in settings")
     @MainActor
-    func rendersUnframedCodexMark() throws {
+    func rendersUnframedGPTMark() throws {
         let renderer = ImageRenderer(
             content: AgentBrandIcon(source: .codex, style: .monochrome, size: 24)
         )
@@ -57,9 +57,9 @@ struct AgentBrandIconTests {
         #expect(visiblePixels * 3 < bitmap.pixelsWide * bitmap.pixelsHigh * 2)
     }
 
-    @Test("Renders Codex in its brand color in the session list")
+    @Test("Renders the GPT mark in its brand color in the session list")
     @MainActor
-    func rendersColoredCodexMark() throws {
+    func rendersColoredGPTMark() throws {
         let renderer = ImageRenderer(
             content: AgentBrandIcon(source: .codex, style: .colored, size: 24)
         )
@@ -76,7 +76,8 @@ struct AgentBrandIconTests {
                 guard let color = bitmap.colorAt(x: x, y: y), color.alphaComponent > 0.2 else {
                     continue
                 }
-                if color.blueComponent - color.redComponent > 0.1 {
+                if color.greenComponent - color.redComponent > 0.1,
+                   color.greenComponent - color.blueComponent > 0.05 {
                     hasBrandColor = true
                 }
             }

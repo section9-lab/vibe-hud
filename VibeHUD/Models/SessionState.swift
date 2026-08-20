@@ -97,7 +97,7 @@ enum SessionSource: String, Codable, Equatable, Hashable, Sendable {
     nonisolated var brandAssetName: String? {
         switch self {
         case .claude: "AgentClaude"
-        case .codex: "AgentCodex"
+        case .codex: "AgentGPT"
         case .cursor: "AgentCursor"
         case .copilot: "AgentGitHubCopilot"
         case .pi: "AgentPi"
