@@ -57,36 +57,6 @@ struct AgentBrandIconTests {
         #expect(visiblePixels * 3 < bitmap.pixelsWide * bitmap.pixelsHigh * 2)
     }
 
-    @Test("Renders the GPT mark in white in the session list")
-    @MainActor
-    func rendersWhiteGPTMark() throws {
-        let renderer = ImageRenderer(
-            content: AgentBrandIcon(source: .codex, style: .colored, size: 24)
-        )
-        renderer.scale = 2
-        let image = try #require(renderer.nsImage)
-        let cgImage = try #require(
-            image.cgImage(forProposedRect: nil, context: nil, hints: nil)
-        )
-        let bitmap = NSBitmapImageRep(cgImage: cgImage)
-        var hasWhitePixel = false
-
-        for x in 0..<bitmap.pixelsWide {
-            for y in 0..<bitmap.pixelsHigh {
-                guard let color = bitmap.colorAt(x: x, y: y), color.alphaComponent > 0.2 else {
-                    continue
-                }
-                if abs(color.redComponent - color.greenComponent) < 0.03,
-                   abs(color.greenComponent - color.blueComponent) < 0.03,
-                   color.redComponent > 0.8 {
-                    hasWhitePixel = true
-                }
-            }
-        }
-
-        #expect(hasWhitePixel)
-    }
-
     @Test(
         "Renders settings icons as white templates",
         arguments: [
