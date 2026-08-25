@@ -70,8 +70,49 @@ jobs:
             -format UDZO \
             "release/vibe-hud-${TAG_NAME}.dmg"
 
+      - name: Generate GitHub Release appcast
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          app_path="build/DerivedData/Build/Products/Release/vibe hud.app"
+          dmg_path="release/vibe-hud-${TAG_NAME}.dmg"
+          version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app_path/Contents/Info.plist")
+          build=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$app_path/Contents/Info.plist")
+          length=$(stat -f%z "$dmg_path")
+          cat > release/appcast.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>vibe hud</title>
+              <item>
+                <title>v${version}</title>
+                <sparkle:version>${build}</sparkle:version>
+                <sparkle:shortVersionString>${version}</sparkle:shortVersionString>
+                <pubDate>$(date -u "+%a, %d %b %Y %H:%M:%S %z")</pubDate>
+                <enclosure
+                  url="https://github.com/section9-lab/vibe-hud/releases/download/${TAG_NAME}/vibe-hud-${TAG_NAME}.dmg"
+                  sparkle:version="${build}"
+                  sparkle:shortVersionString="${version}"
+                  length="${length}"
+                  type="application/x-apple-diskimage" />
+              </item>
+            </channel>
+          </rss>
+          EOF
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("release/appcast.xml")
+          path.write_text("\n".join(line[10:] if line.startswith("          ") else line for line in path.read_text().splitlines()) + "\n")
+          PY
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          ET.parse("release/appcast.xml")
+          PY
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: release/vibe-hud-${{ github.ref_name }}.dmg
+          files: |
+            release/vibe-hud-${{ github.ref_name }}.dmg
+            release/appcast.xml

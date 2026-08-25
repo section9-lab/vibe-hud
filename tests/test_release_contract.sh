@@ -19,12 +19,19 @@ for required in \
     'codesign --verify --deep --strict' \
     'ln -s /Applications' \
     'hdiutil create' \
+    'Generate GitHub Release appcast' \
+    'release/appcast.xml' \
     'softprops/action-gh-release@v2'; do
     if ! grep -Fq -- "$required" "$workflow"; then
         echo "Release workflow is missing: $required" >&2
         exit 1
     fi
 done
+
+if [ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$plist")" != "https://github.com/section9-lab/vibe-hud/releases/latest/download/appcast.xml" ]; then
+    echo "Sparkle must use the GitHub Releases appcast" >&2
+    exit 1
+fi
 
 for key in CFBundleDisplayName CFBundleName; do
     if [ "$(/usr/libexec/PlistBuddy -c "Print :$key" "$plist")" != "vibe hud" ]; then

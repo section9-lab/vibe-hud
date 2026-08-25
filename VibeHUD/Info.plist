@@ -19,9 +19,7 @@
 
     <!-- Sparkle Update Configuration -->
     <key>SUFeedURL</key>
-    <string>https://vibehud.com/appcast.xml</string>
-    <key>SUPublicEDKey</key>
-    <string>w5NwH5KRfE7LfeZ09J8lWx3UQrWTqUbfH4HHBa1OPRk=</string>
+    <string>https://github.com/section9-lab/vibe-hud/releases/latest/download/appcast.xml</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
 </dict>
