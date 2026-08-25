@@ -14,6 +14,25 @@ struct HookEventTests {
         #expect(makeEvent(status: "failed", message: "Rate limited").determinePhase() == .failed("Rate limited"))
     }
 
+    @Test(
+        "Completion status aliases return every agent to ready",
+        arguments: ["completed", "complete", "done", "success", "idle", "ready", "settled"]
+    )
+    func mapsCompletionStatusAliases(status: String) {
+        #expect(makeEvent(event: "SessionStatus", status: status).determinePhase() == .waitingForInput)
+    }
+
+    @Test("Idle notifications return to ready")
+    func idleNotificationReturnsToReady() {
+        let idleEvent = makeEvent(
+            event: "Notification",
+            status: "notification",
+            notificationType: "idle_prompt"
+        )
+
+        #expect(idleEvent.determinePhase() == .waitingForInput)
+    }
+
     @Test("PreCompact overrides a stale status")
     func preCompactTakesPriority() {
         let event = makeEvent(event: "PreCompact", status: "waiting_for_input")
@@ -99,6 +118,7 @@ private func makeEvent(
     message: String? = nil,
     tool: String? = nil,
     toolUseId: String? = nil,
+    notificationType: String? = nil,
     sessionId: String = "session-1",
     cwd: String = "/tmp/project",
     source: String = "codex"
@@ -119,7 +139,7 @@ private func makeEvent(
         tool: tool,
         toolInput: nil,
         toolUseId: toolUseId,
-        notificationType: nil,
+        notificationType: notificationType,
         message: message
     )
 }

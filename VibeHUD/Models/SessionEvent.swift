@@ -151,7 +151,7 @@ extension HookEvent {
         }
 
         if event == "Notification" && notificationType == "idle_prompt" {
-            return .idle
+            return .waitingForInput
         }
 
         switch status {
@@ -163,6 +163,11 @@ extension HookEvent {
                 receivedAt: Date()
             ))
         case "waiting_for_input":
+            return .waitingForInput
+        case "completed", "complete", "done", "success", "idle", "ready", "settled":
+            // Different agent adapters use different words for the same
+            // post-turn state. Normalize them so no source remains active
+            // after its final response.
             return .waitingForInput
         case "running_tool", "processing", "starting":
             return .processing

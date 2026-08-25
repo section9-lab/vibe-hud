@@ -9,6 +9,11 @@ struct SessionPhaseTests {
         #expect(SessionPhase.idle.canTransition(to: .waitingForInput))
     }
 
+    @Test("A ready session can start another turn")
+    func readyCanBecomeProcessing() {
+        #expect(SessionPhase.waitingForInput.canTransition(to: .processing))
+    }
+
     @Test("Ended is terminal")
     func endedIsTerminal() {
         #expect(!SessionPhase.ended.canTransition(to: .processing))
