@@ -52,6 +52,22 @@ struct CodexSessionRecoveryTests {
         #expect(recovered?.status == "processing")
     }
 
+    @Test(
+        "A final assistant answer returns a Codex session to ready",
+        arguments: [
+            "{\"type\":\"event_msg\",\"payload\":{\"type\":\"agent_message\",\"phase\":\"final_answer\"}}",
+            "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"phase\":\"final_answer\"}}"
+        ]
+    )
+    func finalAssistantAnswerReturnsReady(finalAnswer: String) {
+        let recovered = CodexSessionRecovery.parseContent(
+            prefix + "\n" + finalAnswer,
+            transcriptPath: "/tmp/rollout.jsonl"
+        )
+
+        #expect(recovered?.status == "waiting_for_input")
+    }
+
     @Test("A new Codex turn supersedes the previous completion")
     func newTurnSupersedesCompletion() {
         let content = prefix + """

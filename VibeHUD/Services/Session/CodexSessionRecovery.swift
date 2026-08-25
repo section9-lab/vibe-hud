@@ -203,6 +203,17 @@ enum CodexSessionRecovery {
         payload: [String: Any],
         turnId: String?
     ) -> CodexRolloutState? {
+        if isFinalAssistantOutput(payload) {
+            let eventType = payload["type"] as? String ?? "assistant_complete"
+            let timestamp = json["timestamp"] as? String ?? ""
+            let completionKey = [eventType, turnId ?? "", timestamp].joined(separator: "|")
+            return CodexRolloutState(
+                status: "waiting_for_input",
+                turnId: turnId,
+                completionKey: completionKey
+            )
+        }
+
         switch (json["type"] as? String, payload["type"] as? String) {
         case ("event_msg", "task_started"),
              ("event_msg", "user_message"),
@@ -227,5 +238,14 @@ enum CodexSessionRecovery {
         default:
             return nil
         }
+    }
+
+    nonisolated private static func isFinalAssistantOutput(_ payload: [String: Any]) -> Bool {
+        let phase = payload["phase"] as? String
+        guard ["final_answer", "final", "completed"].contains(phase) else { return false }
+
+        let type = payload["type"] as? String
+        return type == "agent_message"
+            || (type == "message" && payload["role"] as? String == "assistant")
     }
 }
