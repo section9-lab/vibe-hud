@@ -29,4 +29,13 @@ struct NotchGeometryTests {
         #expect(geometry.isPointInNotch(CGPoint(x: 495, y: 766)))
         #expect(!geometry.isPointInNotch(CGPoint(x: 450, y: 700)))
     }
+
+    @Test("Closed activity keeps its right edge on the physical notch")
+    func closedActivityKeepsPhysicalRightEdge() {
+        let renderedWidth: CGFloat = 238
+        let renderedRightEdge = geometry.screenRect.midX + renderedWidth / 2
+            + geometry.closedContentOffset(forRenderedWidth: renderedWidth)
+
+        #expect(renderedRightEdge == geometry.notchScreenRect.maxX)
+    }
 }

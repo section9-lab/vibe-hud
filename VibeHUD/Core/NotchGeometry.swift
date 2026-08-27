@@ -51,4 +51,9 @@ struct NotchGeometry: Sendable {
     func isPointOutsidePanel(_ point: CGPoint, size: CGSize) -> Bool {
         !openedScreenRect(for: size).contains(point)
     }
+
+    /// Offset wider closed content so its right edge stays on the physical notch.
+    func closedContentOffset(forRenderedWidth width: CGFloat) -> CGFloat {
+        (deviceNotchRect.width - width) / 2
+    }
 }

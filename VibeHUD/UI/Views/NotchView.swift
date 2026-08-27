@@ -165,7 +165,7 @@ struct NotchView: View {
                         .horizontal,
                         viewModel.status == .opened
                             ? cornerRadiusInsets.opened.top
-                            : cornerRadiusInsets.closed.bottom
+                            : cornerRadiusInsets.closed.top
                     )
                     .padding([.horizontal, .bottom], viewModel.status == .opened ? 12 : 0)
                     .background(.black)
@@ -298,10 +298,18 @@ struct NotchView: View {
         32
     }
 
+    private var closedRenderedWidth: CGFloat {
+        let permissionIndicatorWidth: CGFloat = hasPendingPermission ? 18 : 0
+        let bounceWidth: CGFloat = isBouncing ? 16 : 0
+        let headerWidth = sideWidth + permissionIndicatorWidth
+            + closedNotchSize.width - cornerRadiusInsets.closed.top + bounceWidth
+        return headerWidth + 2 * cornerRadiusInsets.closed.top
+    }
+
     /// Keep the closed state's right edge aligned with the physical notch.
     private var closedNotchOffset: CGFloat {
         guard viewModel.status != .opened else { return 0 }
-        return -(sideWidth + (hasPendingPermission ? 18 : 0)) / 2
+        return viewModel.geometry.closedContentOffset(forRenderedWidth: closedRenderedWidth)
     }
 
     // MARK: - Opened Header Content
