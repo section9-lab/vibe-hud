@@ -173,6 +173,10 @@ class UpdateManager: NSObject, ObservableObject {
 @MainActor
 class NotchUserDriver: NSObject, SPUUserDriver {
 
+    nonisolated override init() {
+        super.init()
+    }
+
     var canCheckForUpdates: Bool { true }
 
     // MARK: - Update Found

@@ -5,6 +5,11 @@ import Testing
 @Suite("Sparkle update status", .serialized)
 @MainActor
 struct NotchUserDriverTests {
+    @Test("A nonisolated app delegate initializer can construct the stateless driver")
+    nonisolated func driverCanBeConstructedWithoutActorIsolation() {
+        _ = NotchUserDriver()
+    }
+
     @Test("Download and extraction callbacks preserve their order")
     func progressCallbacksAreSynchronous() {
         let manager = UpdateManager.shared
