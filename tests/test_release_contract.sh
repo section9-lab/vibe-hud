@@ -14,12 +14,17 @@ for required in \
     'xcodebuild test' \
     'python3 -m unittest tests/test_hook_state_adapter.py -v' \
     'node tests/test_opencode_plugin.mjs' \
+    'bash tests/test_update_signature.sh' \
     'CODE_SIGNING_ALLOWED=NO' \
     'codesign --force --deep --sign -' \
     'codesign --verify --deep --strict' \
     'ln -s /Applications' \
     'hdiutil create' \
     'Generate GitHub Release appcast' \
+    'secrets.SPARKLE_PRIVATE_KEY' \
+    'sign_update' \
+    'sparkle:edSignature=' \
+    'swift scripts/verify-update.swift' \
     'release/appcast.xml' \
     'softprops/action-gh-release@v2'; do
     if ! grep -Fq -- "$required" "$workflow"; then
@@ -27,6 +32,16 @@ for required in \
         exit 1
     fi
 done
+
+python3 - "$plist" <<'PY'
+import base64
+import plistlib
+import sys
+
+with open(sys.argv[1], "rb") as file:
+    key = plistlib.load(file).get("SUPublicEDKey", "")
+assert len(base64.b64decode(key, validate=True)) == 32, "The app must embed its Sparkle Ed25519 public key"
+PY
 
 if [ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$plist")" != "https://github.com/section9-lab/vibe-hud/releases/latest/download/appcast.xml" ]; then
     echo "Sparkle must use the GitHub Releases appcast" >&2

@@ -26,6 +26,7 @@ jobs:
           python3 -m unittest tests/test_hook_state_adapter.py -v
           node tests/test_opencode_plugin.mjs
           bash tests/test_release_contract.sh
+          bash tests/test_update_signature.sh
 
       - name: Build release app
         run: |
@@ -73,9 +74,16 @@ jobs:
       - name: Generate GitHub Release appcast
         env:
           TAG_NAME: ${{ github.ref_name }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "SPARKLE_PRIVATE_KEY must be configured before publishing an update" >&2
+            exit 1
+          fi
           app_path="build/DerivedData/Build/Products/Release/vibe hud.app"
           dmg_path="release/vibe-hud-${TAG_NAME}.dmg"
+          sign_update="build/DerivedData/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update"
+          signature=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$sign_update" --ed-key-file - -p "$dmg_path")
           version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app_path/Contents/Info.plist")
           build=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$app_path/Contents/Info.plist")
           length=$(stat -f%z "$dmg_path")
@@ -93,6 +101,7 @@ jobs:
                   url="https://github.com/section9-lab/vibe-hud/releases/download/${TAG_NAME}/vibe-hud-${TAG_NAME}.dmg"
                   sparkle:version="${build}"
                   sparkle:shortVersionString="${version}"
+                  sparkle:edSignature="${signature}"
                   length="${length}"
                   type="application/x-apple-diskimage" />
               </item>
@@ -104,10 +113,7 @@ jobs:
           path = Path("release/appcast.xml")
           path.write_text("\n".join(line[10:] if line.startswith("          ") else line for line in path.read_text().splitlines()) + "\n")
           PY
-          python3 - <<'PY'
-          import xml.etree.ElementTree as ET
-          ET.parse("release/appcast.xml")
-          PY
+          swift scripts/verify-update.swift "$app_path" "$dmg_path" release/appcast.xml
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2

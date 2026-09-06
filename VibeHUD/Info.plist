@@ -18,6 +18,8 @@
     <string>Copyright 2025. All rights reserved.</string>
 
     <!-- Sparkle Update Configuration -->
+    <key>SUPublicEDKey</key>
+    <string>G11G3qRH6dOAgM1lK6TozTkF7K4vt386L/d4AGplaSs=</string>
     <key>SUFeedURL</key>
     <string>https://github.com/section9-lab/vibe-hud/releases/latest/download/appcast.xml</string>
     <key>SUEnableAutomaticChecks</key>

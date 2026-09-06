@@ -101,6 +101,10 @@ vibe hud works with the current Claude config layout and can resolve the config 
 
 vibe hud uses Sparkle for in-app updates, so installed builds can check for new versions and install them from the app.
 
+GitHub tag releases require the `SPARKLE_PRIVATE_KEY` Actions secret matching `SUPublicEDKey` in `VibeHUD/Info.plist`. The workflow signs each DMG and verifies its signature against the built app's public key before publishing. Keep this key pair across releases.
+
+Older builds without an update public key may need a one-time manual reinstall to establish trust in signed updates. Their in-app updater cannot accept a release that changes both the app signing identity and the update signing key.
+
 ## Privacy
 
 vibe hud uses Mixpanel for product analytics such as app version, build number, macOS version, and Claude Code version metadata. The README should not promise that conversation content is collected, and the app is intended to track product usage rather than your chat transcripts.
@@ -128,6 +132,8 @@ xcodebuild test -project VibeHUD.xcodeproj -scheme VibeHUD -destination 'platfor
 ```
 
 The Python hook adapter, OpenCode JavaScript plugin, and release packaging contract retain focused runtime tests because those components execute outside the Swift process.
+
+Run `bash tests/test_update_signature.sh` to verify acceptance of signed archives and rejection of modified archives, missing or mismatched keys, and incorrect release metadata.
 
 ## License
 
