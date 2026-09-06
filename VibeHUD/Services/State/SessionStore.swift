@@ -178,7 +178,7 @@ actor SessionStore {
             Mixpanel.mainInstance().track(event: "Session Started")
         }
 
-        session.pid = event.pid
+        session.pid = event.pid ?? session.pid
         if let pid = event.pid {
             let tree = ProcessTreeBuilder.shared.buildTree()
             session.isInTmux = ProcessTreeBuilder.shared.isInTmux(pid: pid, tree: tree)
@@ -632,15 +632,26 @@ actor SessionStore {
     // MARK: - File Update Processing
 
     private func processFileUpdate(_ payload: FileUpdatePayload) async {
-        guard var session = sessions[payload.sessionId] else { return }
+        guard let existingSession = sessions[payload.sessionId] else { return }
 
-        // Update conversationInfo from JSONL (summary, lastMessage, etc.)
+        // Finish file reads before taking a mutable snapshot: hooks can end or
+        // update the session while this actor is suspended at either read.
         let conversationInfo = await ConversationParser.shared.parse(
             sessionId: payload.sessionId,
-            cwd: session.cwd
-            ,
-            transcriptPath: payload.transcriptPath ?? session.transcriptPath
+            cwd: existingSession.cwd,
+            transcriptPath: payload.transcriptPath ?? existingSession.transcriptPath
         )
+        var subagentTools: [String: [SubagentToolInfo]] = [:]
+        for (toolId, result) in payload.structuredResults {
+            guard case .task(let taskResult) = result, !taskResult.agentId.isEmpty else { continue }
+            subagentTools[toolId] = await ConversationParser.shared.parseSubagentTools(
+                sessionId: payload.sessionId,
+                agentId: taskResult.agentId,
+                cwd: payload.cwd
+            )
+        }
+
+        guard var session = sessions[payload.sessionId] else { return }
         session.conversationInfo = conversationInfo
 
         // Handle /clear reconciliation - remove items that no longer exist in parser state
@@ -763,11 +774,10 @@ actor SessionStore {
 
         session.toolTracker.lastSyncTime = Date()
 
-        await populateSubagentToolsFromAgentFiles(
-            sessionId: payload.sessionId,
+        populateSubagentToolsFromAgentFiles(
             session: &session,
-            cwd: payload.cwd,
-            structuredResults: payload.structuredResults
+            structuredResults: payload.structuredResults,
+            subagentTools: subagentTools
         )
 
         sessions[payload.sessionId] = session
@@ -783,11 +793,10 @@ actor SessionStore {
 
     /// Populate subagent tools for Task/Agent tools using their agent JSONL files
     private func populateSubagentToolsFromAgentFiles(
-        sessionId: String,
         session: inout SessionState,
-        cwd: String,
-        structuredResults: [String: ToolResultData]
-    ) async {
+        structuredResults: [String: ToolResultData],
+        subagentTools: [String: [SubagentToolInfo]]
+    ) {
         for i in 0..<session.chatItems.count {
             guard case .toolCall(var tool) = session.chatItems[i].type,
                   tool.isSubagentContainer,
@@ -804,13 +813,8 @@ actor SessionStore {
                 session.subagentState.agentDescriptions[taskResult.agentId] = description
             }
 
-            let subagentToolInfos = await ConversationParser.shared.parseSubagentTools(
-                sessionId: sessionId,
-                agentId: taskResult.agentId,
-                cwd: cwd
-            )
-
-            guard !subagentToolInfos.isEmpty else { continue }
+            guard let subagentToolInfos = subagentTools[taskToolId],
+                  !subagentToolInfos.isEmpty else { continue }
 
             tool.subagentTools = subagentToolInfos.map { info in
                 SubagentToolCall(

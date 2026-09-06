@@ -31,12 +31,6 @@ struct HookInstaller {
         "errorOccurred", "notification", "preCompact", "subagentStart", "subagentStop",
     ]
 
-    nonisolated static let vscodeAgentEvents = [
-        "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse",
-        "PostToolUse", "PostToolUseFailure", "PermissionRequest", "Stop",
-        "Error", "Notification", "PreCompact", "SubagentStart", "SubagentStop",
-    ]
-
     nonisolated static let workBuddyEvents = [
         "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse",
         "PostToolUse", "Stop", "PreCompact", "Notification",
@@ -203,12 +197,6 @@ struct HookInstaller {
             at: CopilotPaths.hookFile,
             events: copilotEvents,
             command: "python3 \(shellQuote(CopilotPaths.hookScriptPath.path)) --source copilot",
-            includesVersion: true
-        )
-        updateCommandHooks(
-            at: CopilotPaths.hookFile,
-            events: vscodeAgentEvents,
-            command: "python3 \(shellQuote(CopilotPaths.hookScriptPath.path)) --source vscodeagent",
             includesVersion: true
         )
     }
@@ -520,11 +508,20 @@ struct HookInstaller {
         }
 
         var hooks = json["hooks"] as? [String: Any] ?? [:]
+        // VS Code also reads Copilot's event names, so remove older duplicate registrations.
+        for (event, value) in hooks {
+            guard let entries = value as? [[String: Any]] else { continue }
+            let cleaned = entries.filter { !isManagedCommandHook($0) }
+            hooks[event] = cleaned.isEmpty ? nil : cleaned
+        }
         for event in events {
             let existingEvent = hooks[event] as? [[String: Any]] ?? []
-            let cleanedEvent = existingEvent.filter { !isManagedCommandHook($0) }
             let eventCommand = "\(command) --event \(event)"
-            hooks[event] = cleanedEvent + [["command": eventCommand]]
+            var entry = ["command": eventCommand]
+            if includesVersion {
+                entry["type"] = "command"
+            }
+            hooks[event] = existingEvent + [entry]
         }
         json["hooks"] = hooks
 

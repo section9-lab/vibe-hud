@@ -135,7 +135,7 @@ def find_agent_pid(source, start_pid):
         "claude": ("/claude", "claude.app"),
         "codex": ("/codex", "codex.app"),
         "cursor": ("/cursor", "cursor.app"),
-        "copilot": ("/copilot", "github-copilot"),
+        "copilot": ("/copilot", "github-copilot", "visual studio code", "code helper"),
         "vscodeagent": ("visual studio code", "code helper"),
         "workbuddy": ("/workbuddy", "workbuddy.app", "/codebuddy"),
     }.get(source, ())
@@ -272,6 +272,13 @@ def main():
     cwd = data.get("cwd") or next(iter(data.get("workspace_roots", [])), "")
     tool_name = data.get("tool_name") or data.get("toolName")
     tool_input = data.get("tool_input") or data.get("toolArgs") or data.get("toolInput") or {}
+    if isinstance(tool_input, str):
+        try:
+            tool_input = json.loads(tool_input)
+        except json.JSONDecodeError:
+            tool_input = {}
+    if not isinstance(tool_input, dict):
+        tool_input = {}
     tool_use_id = data.get("tool_use_id") or data.get("toolCallId") or data.get("toolUseId")
 
     # Get process info
@@ -287,6 +294,9 @@ def main():
     source_timestamp = data.get("event_timestamp") or data.get("timestamp")
     if not isinstance(source_timestamp, (int, float)):
         source_timestamp = time.time()
+    elif source_timestamp >= 1_000_000_000_000:
+        # Copilot emits Unix milliseconds; the session store orders events in seconds.
+        source_timestamp /= 1000
 
     # Build state object
     state = {

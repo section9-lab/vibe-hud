@@ -49,14 +49,40 @@ struct HookInstallerTests {
         #expect(json["version"] as? Int == 1)
         let hooks = try #require(json["hooks"] as? [String: Any])
         #expect(Set(hooks.keys) == Set(HookInstaller.copilotEvents))
+        for event in HookInstaller.copilotEvents {
+            let entries = try #require(hooks[event] as? [[String: Any]])
+            #expect(entries.allSatisfy { $0["type"] as? String == "command" })
+        }
     }
 
-    @Test("Declares distinct VS Code Agent lifecycle events")
-    func declaresVSCodeAgentEvents() {
-        #expect(HookInstaller.vscodeAgentEvents.contains("UserPromptSubmit"))
-        #expect(HookInstaller.vscodeAgentEvents.contains("PermissionRequest"))
-        #expect(HookInstaller.vscodeAgentEvents.contains("PostToolUseFailure"))
-        #expect(HookInstaller.vscodeAgentEvents.contains("SessionEnd"))
+    @Test("Updating shared Copilot hooks removes duplicate legacy VS Code registrations")
+    func removesDuplicateCopilotRegistrations() throws {
+        let url = temporaryFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try writeJSON([
+            "hooks": [
+                "PreToolUse": [
+                    ["command": "echo keep-me"],
+                    ["command": "python3 /tmp/vibe-hud-state.py --source vscodeagent --event PreToolUse"],
+                ],
+                "PostToolUse": [
+                    ["command": "python3 /tmp/vibe-hud-state.py --source vscodeagent --event PostToolUse"],
+                ],
+            ]
+        ], to: url)
+
+        HookInstaller.updateCommandHooks(
+            at: url,
+            events: HookInstaller.copilotEvents,
+            command: "python3 /tmp/vibe-hud-state.py --source copilot",
+            includesVersion: true
+        )
+
+        let hooks = try #require(readJSON(at: url)["hooks"] as? [String: Any])
+        let legacyPreToolUse = try #require(hooks["PreToolUse"] as? [[String: Any]])
+        #expect(legacyPreToolUse.compactMap { $0["command"] as? String } == ["echo keep-me"])
+        #expect(hooks["PostToolUse"] == nil)
+        #expect(Set(hooks.keys) == Set(HookInstaller.copilotEvents + ["PreToolUse"]))
     }
 
     @Test("Installs WorkBuddy hooks without removing other integrations")

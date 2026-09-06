@@ -67,6 +67,30 @@ class HookStateAdapterTests(unittest.TestCase):
         self.assertEqual(state["tool_input"], {"command": "pwd"})
         self.assertEqual(state["tool_use_id"], "call-1")
 
+    def test_copilot_serialized_tool_arguments_are_decoded_for_swift(self):
+        for event in ("preToolUse", "postToolUse"):
+            with self.subTest(event=event):
+                state = self.run_adapter(
+                    {
+                        "sessionId": "copilot-session",
+                        "toolName": "view",
+                        "toolArgs": '{"path":"/tmp/probe.txt"}',
+                    },
+                    "--source", "copilot", "--event", event,
+                )
+
+                self.assertEqual(state["tool_input"], {"path": "/tmp/probe.txt"})
+
+    def test_invalid_tool_arguments_remain_a_json_object(self):
+        for arguments in ("invalid json", "[]", "null"):
+            with self.subTest(arguments=arguments):
+                state = self.run_adapter(
+                    {"sessionId": "copilot-session", "toolName": "view", "toolArgs": arguments},
+                    "--source", "copilot", "--event", "preToolUse",
+                )
+
+                self.assertEqual(state["tool_input"], {})
+
     def test_cursor_compaction_event_enters_compacting_state(self):
         state = self.run_adapter(
             {"conversation_id": "cursor-session", "cwd": "/tmp/project"},
@@ -136,6 +160,24 @@ class HookStateAdapterTests(unittest.TestCase):
 
         self.assertIsInstance(state["event_timestamp"], float)
 
+    def test_copilot_millisecond_timestamps_are_converted_to_seconds(self):
+        for timestamp in (1788434716013, 1788434716013.0):
+            with self.subTest(timestamp=timestamp):
+                state = self.run_adapter(
+                    {"sessionId": "copilot-session", "timestamp": timestamp},
+                    "--source", "copilot", "--event", "postToolUse",
+                )
+
+                self.assertEqual(state["event_timestamp"], 1788434716.013)
+
+    def test_second_timestamps_keep_their_precision(self):
+        state = self.run_adapter(
+            {"session_id": "claude-session", "event_timestamp": 1788434716.013},
+            "--source", "claude", "--event", "Stop",
+        )
+
+        self.assertEqual(state["event_timestamp"], 1788434716.013)
+
     def test_copilot_error_is_reported_as_failure(self):
         state = self.run_adapter(
             {
@@ -190,6 +232,16 @@ class HookStateAdapterTests(unittest.TestCase):
 
         with mock.patch.object(adapter.subprocess, "run", side_effect=process_rows):
             self.assertEqual(adapter.find_agent_pid("codex", 42), 41)
+
+    def test_shared_copilot_hook_finds_vs_code_process(self):
+        adapter = load_adapter()
+        process_rows = [
+            SimpleNamespace(stdout="41 /bin/sh -c python3 vibe-hud-state.py\n"),
+            SimpleNamespace(stdout="1 /Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin)\n"),
+        ]
+
+        with mock.patch.object(adapter.subprocess, "run", side_effect=process_rows):
+            self.assertEqual(adapter.find_agent_pid("copilot", 42), 41)
 
     def test_workbuddy_hook_preserves_transcript_and_source(self):
         state = self.run_adapter(
