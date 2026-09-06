@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="VibeHUD/AppIcon.icon/vibe-hud.png" alt="vibe hud icon" width="120" height="120">
+  <img src="VibeHUD/Assets.xcassets/AppIcon.appiconset/icon_256x256.png" alt="vibe hud icon" width="120" height="120">
   <h1 align="center">vibe hud</h1>
 
   <p align="center">
