@@ -16,6 +16,13 @@
 
 </div>
 
+## Demo
+
+<p align="center">
+  <img src="docs/assets/vibe-hud-demo.gif" alt="Simulated macOS desktop showing vibe hud activity rings, session status, conversation history, and settings in the notch" width="1000">
+</p>
+<p align="center"><sub>Simulated macOS desktop with sample sessions.</sub></p>
+
 ## What it does
 
 vibe hud gives Claude Code a fast, ambient control surface on macOS. Instead of bouncing back and forth between your terminal and system prompts, you get a floating HUD for watching sessions, handling approvals, replying to prompts, and checking updates.

@@ -30,6 +30,12 @@ struct WorkBuddySessionMonitorTests {
             at: directory.appendingPathComponent("prewarm.json")
         )
         try sessionFile(
+            sessionId: "interactive-host-505",
+            cwd: "/private/tmp/workbuddy-host-cli/__workbuddy_cli_host__-1-abc",
+            pid: 505,
+            at: directory.appendingPathComponent("host.json")
+        )
+        try sessionFile(
             sessionId: "stale-404",
             cwd: "/tmp/stale",
             pid: 404,
@@ -38,7 +44,7 @@ struct WorkBuddySessionMonitorTests {
 
         let sessions = try WorkBuddySessionDirectory.sessions(
             at: directory,
-            isProcessRunning: { $0 == 101 || $0 == 202 || $0 == 303 }
+            isProcessRunning: { $0 == 101 || $0 == 202 || $0 == 303 || $0 == 505 }
         )
 
         #expect(sessions == [

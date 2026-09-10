@@ -110,6 +110,19 @@ struct HookEventTests {
         #expect(json["turn_id"] as? String == "turn-1")
         #expect(json["stop_hook_active"] as? Bool == true)
     }
+
+    @Test("Ignores WorkBuddy host workers without hiding normal interactive sessions")
+    func ignoresWorkBuddyHostWorkers() {
+        let host = makeEvent(
+            status: "starting", sessionId: "interactive-505",
+            cwd: "/private/tmp/workbuddy-host-cli/__workbuddy_cli_host__-1-abc", source: "workbuddy"
+        )
+        let interactive = makeEvent(
+            status: "processing", sessionId: "interactive-101", cwd: "/tmp/project", source: "workbuddy"
+        )
+        #expect(!host.isDisplayableSession)
+        #expect(interactive.isDisplayableSession)
+    }
 }
 
 private func makeEvent(

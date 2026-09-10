@@ -88,6 +88,7 @@ actor ConversationParser {
         var structuredResults: [String: ToolResultData] = [:]  // Structured results keyed by tool_use_id
         var lastClearOffset: UInt64 = 0  // Offset of last /clear command (0 = none or at start)
         var clearPending: Bool = false  // True if a /clear was just detected
+        var lastCodexRecordType: String?
     }
 
     /// Parsed tool result data
@@ -733,8 +734,17 @@ actor ConversationParser {
 
     private func workBuddyText(from json: [String: Any], key: String = "content") -> String? {
         guard let blocks = json[key] as? [[String: Any]] else { return nil }
-        return blocks.compactMap { $0["text"] as? String }
-            .last(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        guard let text = blocks.compactMap({ $0["text"] as? String })
+            .last(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else { return nil }
+        guard json["role"] as? String == "user",
+              text.trimmingCharacters(in: .whitespacesAndNewlines)
+                .hasPrefix("<system-reminder data-role=\"user-context\">"),
+              let contextEnd = text.range(of: "</system-reminder>"),
+              let queryStart = text.range(of: "<user_query>", range: contextEnd.upperBound..<text.endIndex),
+              let queryEnd = text.range(of: "</user_query>", options: .backwards),
+              queryStart.upperBound <= queryEnd.lowerBound else { return text }
+        return String(text[queryStart.upperBound..<queryEnd.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func workBuddyToolInput(_ value: Any?) -> [String: Any] {
@@ -788,30 +798,15 @@ actor ConversationParser {
                 summary = threadName
             }
 
-            guard json["type"] as? String == "event_msg",
-                  let payload = json["payload"] as? [String: Any],
-                  let eventType = payload["type"] as? String else {
-                continue
-            }
-
-            switch eventType {
-            case "user_message":
-                guard let message = payload["message"] as? String,
-                      !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            guard let message = parseCodexMessage(json) else { continue }
+            if message.role == .user {
                 if firstUserMessage == nil {
-                    firstUserMessage = Self.truncateMessage(message, maxLength: 50)
+                    firstUserMessage = Self.truncateMessage(message.textContent, maxLength: 50)
                 }
-                lastUserMessageDate = parseCodexTimestamp(json["timestamp"] as? String)
-                lastMessage = Self.truncateMessage(message, maxLength: 80)
-                lastMessageRole = "user"
-            case "agent_message":
-                guard let message = payload["message"] as? String,
-                      !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
-                lastMessage = Self.truncateMessage(message, maxLength: 80)
-                lastMessageRole = "assistant"
-            default:
-                continue
+                lastUserMessageDate = message.timestamp
             }
+            lastMessage = Self.truncateMessage(message.textContent, maxLength: 80)
+            lastMessageRole = message.role.rawValue
         }
 
         return ConversationInfo(
@@ -862,39 +857,25 @@ actor ConversationParser {
         for line in lines where !line.isEmpty {
             guard let lineData = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                  json["type"] as? String == "event_msg",
-                  let payload = json["payload"] as? [String: Any],
-                  let eventType = payload["type"] as? String else {
+                  let message = parseCodexMessage(json) else {
                 continue
             }
 
-            let timestamp = parseCodexTimestamp(json["timestamp"] as? String) ?? Date()
-            switch eventType {
-            case "user_message":
-                if let message = payload["message"] as? String,
-                   let chatMessage = makeCodexChatMessage(
-                    role: .user,
-                    text: message,
-                    timestamp: timestamp,
-                    discriminator: "user"
-                   ) {
-                    newMessages.append(chatMessage)
-                    state.messages.append(chatMessage)
-                }
-            case "agent_message":
-                if let message = payload["message"] as? String,
-                   let chatMessage = makeCodexChatMessage(
-                    role: .assistant,
-                    text: message,
-                    timestamp: timestamp,
-                    discriminator: payload["phase"] as? String ?? "assistant"
-                   ) {
-                    newMessages.append(chatMessage)
-                    state.messages.append(chatMessage)
-                }
-            default:
+            // Older rollouts can mirror a message in both record formats.
+            // Keep the pair once, including when it straddles two file reads.
+            let recordType = json["type"] as? String
+            if let previousType = state.lastCodexRecordType,
+               previousType != recordType,
+               let previous = state.messages.last,
+               previous.role == message.role,
+               previous.textContent == message.textContent,
+               abs(previous.timestamp.timeIntervalSince(message.timestamp)) < 1 {
+                state.lastCodexRecordType = nil
                 continue
             }
+            newMessages.append(message)
+            state.messages.append(message)
+            state.lastCodexRecordType = recordType
         }
 
         state.lastFileOffset = fileSize
@@ -1208,6 +1189,49 @@ actor ConversationParser {
 
         let messageIds = messageFiles.map { $0.deletingPathExtension().lastPathComponent }
         return messageIds.isEmpty ? nil : messageIds
+    }
+
+    private func parseCodexMessage(_ json: [String: Any]) -> ChatMessage? {
+        guard let payload = json["payload"] as? [String: Any] else { return nil }
+
+        let role: ChatRole
+        let text: String
+        switch json["type"] as? String {
+        case "response_item":
+            guard payload["type"] as? String == "message",
+                  let rawRole = payload["role"] as? String,
+                  let messageRole = ChatRole(rawValue: rawRole),
+                  messageRole == .user || messageRole == .assistant,
+                  let content = payload["content"] as? [[String: Any]] else { return nil }
+            role = messageRole
+            let metadata = payload["internal_chat_message_metadata_passthrough"] as? [String: Any]
+            let kinds = metadata?["content_item_kinds"] as? [String] ?? []
+            text = content.enumerated().compactMap { index, block in
+                // Codex stores injected app context with the user role too.
+                if role == .user, kinds.indices.contains(index),
+                   kinds[index] != "unknown", !kinds[index].hasPrefix("user.") {
+                    return nil
+                }
+                guard let type = block["type"] as? String,
+                      type == "input_text" || type == "output_text" else { return nil }
+                return block["text"] as? String
+            }.joined(separator: "\n")
+        case "event_msg":
+            guard let type = payload["type"] as? String,
+                  type == "user_message" || type == "agent_message",
+                  let message = payload["message"] as? String else { return nil }
+            role = type == "user_message" ? .user : .assistant
+            text = message
+        default:
+            return nil
+        }
+
+        return makeCodexChatMessage(
+            role: role,
+            text: text,
+            timestamp: parseCodexTimestamp(json["timestamp"] as? String) ?? Date(),
+            discriminator: payload["phase"] as? String ?? role.rawValue
+        )
     }
 
     private func makeCodexChatMessage(

@@ -244,7 +244,7 @@ struct ChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 16) {
+                VStack(spacing: 16) {
                     // Invisible anchor at bottom (first due to flip)
                     Color.clear
                         .frame(height: 1)

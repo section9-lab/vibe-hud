@@ -57,6 +57,59 @@ struct WorkBuddyConversationTests {
         #expect(await parser.completedToolIds(for: "workbuddy-session") == ["call-1"])
         #expect(await parser.toolResults(for: "workbuddy-session")["call-1"]?.content == "/tmp/project")
     }
+
+    @Test("Uses the wrapped user query instead of WorkBuddy's injected context")
+    func extractsUserQuery() async throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let text = "<system-reminder data-role=\"user-context\">Internal workspace instructions</system-reminder>\n<user_query>Read the probe file</user_query>"
+        let record: [String: Any] = [
+            "id": "user-query", "timestamp": 1760000001000, "type": "message", "role": "user",
+            "content": [["type": "input_text", "text": text]]
+        ]
+        try JSONSerialization.data(withJSONObject: record).write(to: fixture.transcript)
+        let parser = ConversationParser()
+        let info = await parser.parse(
+            sessionId: "workbuddy-session", cwd: "/tmp/project", transcriptPath: fixture.transcript.path
+        )
+        let messages = await parser.parseFullConversation(
+            sessionId: "workbuddy-session", cwd: "/tmp/project", transcriptPath: fixture.transcript.path
+        )
+        #expect(info.firstUserMessage == "Read the probe file")
+        #expect(info.lastMessage == "Read the probe file")
+        #expect(messages.map(\.textContent) == ["Read the probe file"])
+    }
+
+    @Test("Preserves ordinary user markup and assistant examples", arguments: ["user", "assistant"])
+    func preservesMessageMarkup(role: String) async throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let text = role == "user"
+            ? "Explain <user_query>this tag</user_query>"
+            : "<system-reminder data-role=\"user-context\">Example</system-reminder><user_query>Example query</user_query>"
+        let record: [String: Any] = [
+            "id": "markup", "timestamp": 1760000001000, "type": "message", "role": role,
+            "content": [["type": role == "user" ? "input_text" : "output_text", "text": text]]
+        ]
+        try JSONSerialization.data(withJSONObject: record).write(to: fixture.transcript)
+        let messages = await ConversationParser().parseFullConversation(
+            sessionId: "workbuddy-session", cwd: "/tmp/project", transcriptPath: fixture.transcript.path
+        )
+        #expect(messages.map(\.textContent) == [text])
+    }
+
+    @Test("Finds the WorkBuddy transcript even when the project directory name differs")
+    func locatesTranscript() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let projects = fixture.transcript.deletingLastPathComponent().deletingLastPathComponent()
+        #expect(WorkBuddyPaths.transcriptFile(
+            sessionId: "workbuddy-session", cwd: "/tmp/project", projectsDirectory: projects
+        )?.resolvingSymlinksInPath() == fixture.transcript.resolvingSymlinksInPath())
+        #expect(WorkBuddyPaths.transcriptFile(
+            sessionId: "missing-session", cwd: "/tmp/project", projectsDirectory: projects
+        ) == nil)
+    }
 }
 
 private func makeFixture() throws -> (root: URL, transcript: URL) {

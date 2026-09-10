@@ -215,6 +215,25 @@ enum PiPaths {
 }
 
 enum WorkBuddyPaths {
+    nonisolated static func transcriptFile(
+        sessionId: String,
+        cwd: String,
+        projectsDirectory: URL = projectsDir
+    ) -> URL? {
+        let filename = sessionId + ".jsonl"
+        let projectName = cwd.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            .replacingOccurrences(of: "/", with: "-")
+        let candidate = projectsDirectory.appendingPathComponent(projectName).appendingPathComponent(filename)
+        if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+
+        // Match by session ID when the project directory name differs from the working directory.
+        let projects = (try? FileManager.default.contentsOfDirectory(
+            at: projectsDirectory, includingPropertiesForKeys: nil
+        )) ?? []
+        return projects.map { $0.appendingPathComponent(filename) }
+            .first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
     nonisolated static var configDir: URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".workbuddy")
     }

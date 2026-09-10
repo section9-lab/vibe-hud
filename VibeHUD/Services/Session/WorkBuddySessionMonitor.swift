@@ -8,6 +8,11 @@ struct WorkBuddySessionRecord: Equatable, Sendable {
 }
 
 enum WorkBuddySessionDirectory {
+    nonisolated static func isUserSession(sessionId: String, cwd: String) -> Bool {
+        !sessionId.lowercased().hasPrefix("prewarm-") &&
+            !URL(fileURLWithPath: cwd).lastPathComponent.hasPrefix("__workbuddy_cli_host__-")
+    }
+
     nonisolated static func sessions(
         at directory: URL,
         isProcessRunning: (Int) -> Bool = isProcessRunning
@@ -22,7 +27,7 @@ enum WorkBuddySessionDirectory {
         .compactMap { url -> WorkBuddySessionRecord? in
             let data = try Data(contentsOf: url)
             let session = try JSONDecoder().decode(SessionFile.self, from: data)
-            guard !session.sessionId.lowercased().hasPrefix("prewarm-"),
+            guard isUserSession(sessionId: session.sessionId, cwd: session.cwd),
                   isProcessRunning(session.pid) else {
                 return nil
             }

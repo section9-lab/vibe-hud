@@ -190,6 +190,9 @@ actor SessionStore {
             session.transcriptPath = transcriptPath
         }
         session.source = SessionSource(rawSource: event.source, transcriptPath: session.transcriptPath)
+        if session.source == .workbuddy, session.transcriptPath?.isEmpty != false {
+            session.transcriptPath = WorkBuddyPaths.transcriptFile(sessionId: sessionId, cwd: event.cwd)?.path
+        }
         if session.source == .codex, let turnId = event.turnId, !turnId.isEmpty {
             activeCodexTurnIds[sessionId] = turnId
         }
