@@ -19,7 +19,7 @@
 ## Demo
 
 <p align="center">
-  <img src="docs/assets/vibe-hud-demo.gif" alt="Simulated macOS desktop showing vibe hud activity rings, session status, conversation history, and settings in the notch" width="1000">
+  <img src="docs/assets/vibe-hud-demo.gif" alt="Light blue macOS desktop demo showing Claude Code, Codex, WorkBuddy, and Cursor sessions in the vibe hud notch" width="1000">
 </p>
 <p align="center"><sub>Simulated macOS desktop with sample sessions.</sub></p>
 
