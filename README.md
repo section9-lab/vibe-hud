@@ -19,7 +19,7 @@
 ## Demo
 
 <p align="center">
-  <img src="docs/assets/vibe-hud-demo.gif" alt="Animated macOS notch demo showing agent rings, active session counts, unobstructed system status icons, and sessions from Claude Code, Codex, WorkBuddy, and Cursor" width="1000">
+  <img src="docs/assets/vibe-hud-demo.gif" alt="Animated macOS notch demo showing agent rings, active session counts, menu bar app icons kept visible to the right of the hardware notch when the HUD is collapsed, and sessions from Claude Code, Codex, WorkBuddy, and Cursor" width="1000">
 </p>
 <p align="center"><sub>Simulated macOS desktop with sample sessions.</sub></p>
 
