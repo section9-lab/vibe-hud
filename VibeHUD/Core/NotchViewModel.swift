@@ -177,6 +177,9 @@ class NotchViewModel: ObservableObject {
         guard newHovering != isHovering else { return }
 
         isHovering = newHovering
+        if newHovering && status == .opened {
+            AppAnalytics.shared.recordActivity()
+        }
 
         // Cancel any pending hover timer
         hoverTimer?.cancel()
@@ -195,6 +198,9 @@ class NotchViewModel: ObservableObject {
 
     private func handleMouseDown() {
         let location = NSEvent.mouseLocation
+        if status == .opened && geometry.isPointInOpenedPanel(location, size: openedSize) {
+            AppAnalytics.shared.recordActivity()
+        }
 
         switch status {
         case .opened:
@@ -249,6 +255,9 @@ class NotchViewModel: ObservableObject {
     // MARK: - Actions
 
     func notchOpen(reason: NotchOpenReason = .unknown) {
+        if reason == .click || reason == .hover {
+            AppAnalytics.shared.recordActivity()
+        }
         openReason = reason
         status = .opened
 
@@ -300,6 +309,7 @@ class NotchViewModel: ObservableObject {
     }
 
     func showChat(for session: SessionState) {
+        AppAnalytics.shared.recordActivity()
         // Avoid unnecessary updates if already showing this chat
         if case .chat(let current) = contentType, current.sessionId == session.sessionId {
             return

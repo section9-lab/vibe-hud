@@ -118,7 +118,13 @@ Older builds without an update public key may need a one-time manual reinstall t
 
 ## Privacy
 
-The app reads local session events and conversation history to display the HUD. It also uses Mixpanel for app launches and session starts, with an app-generated identifier and metadata such as app, build, macOS, and Claude Code versions. The analytics events in the current source do not attach conversation text. See the [privacy page](https://hud.vibevibe.cc/privacy/) for details.
+The app reads local session events and conversation history to display the HUD. Anonymous Mixpanel analytics record app launches and the first actual HUD interaction on each reporting day, using a random installation identifier, app ID, app/build versions, and macOS version. Background agent activity does not count as HUD usage. Analytics do not include conversation text, session identifiers, project paths, commands, hardware UUIDs, or Claude Code versions; IP-based geolocation is disabled. Turn off **Share Anonymous Usage** in the notch menu to stop analytics. See the [privacy page](https://hud.vibevibe.cc/privacy/) for details.
+
+### Shared app analytics
+
+The public ingestion token in `VibeHUD/Info.plist` points to the owner's Mixpanel project. Forks should replace `MixpanelProjectToken` with their own project's token. No API secret or service-account credential belongs in the app.
+
+Multiple apps can share this project by sending a different stable `app_id` on every event and using an app-specific random installation ID. All apps share the project's event allowance. See the [analytics setup guide](docs/analytics.md) for the event contract and dashboard configuration.
 
 ## Build from source
 

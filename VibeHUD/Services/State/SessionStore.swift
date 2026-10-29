@@ -8,7 +8,6 @@
 
 import Combine
 import Foundation
-import Mixpanel
 import os.log
 
 private struct PendingCodexCompletion: Sendable {
@@ -156,7 +155,6 @@ actor SessionStore {
             clearCodexCompletionTracking(sessionId: sessionId)
             return
         }
-        let isNewSession = sessions[sessionId] == nil
         var session = sessions[sessionId] ?? createSession(from: event)
 
         guard hookEventSequence.shouldAccept(
@@ -171,11 +169,6 @@ actor SessionStore {
         }
         if let eventTimestamp = event.eventTimestamp {
             session.lastEventTimestamp = eventTimestamp
-        }
-
-        // Track new session in Mixpanel
-        if isNewSession {
-            Mixpanel.mainInstance().track(event: "Session Started")
         }
 
         session.pid = event.pid ?? session.pid

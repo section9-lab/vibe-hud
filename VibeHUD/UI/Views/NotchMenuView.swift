@@ -26,6 +26,7 @@ struct NotchMenuView: View {
     @ObservedObject private var updateManager = UpdateManager.shared
     @ObservedObject private var screenSelector = ScreenSelector.shared
     @ObservedObject private var soundSelector = SoundSelector.shared
+    @ObservedObject private var analytics = AppAnalytics.shared
     @State private var hookStates: [HookAgent: Bool] = [:]
     @State private var isHooksExpanded: Bool = false
     @State private var launchAtLogin: Bool = false
@@ -134,6 +135,14 @@ struct NotchMenuView: View {
                     .padding(.vertical, 4)
 
                 // About
+                MenuToggleRow(
+                    icon: "chart.bar",
+                    label: "Share Anonymous Usage",
+                    isOn: analytics.isEnabled
+                ) {
+                    analytics.setEnabled(!analytics.isEnabled)
+                }
+
                 UpdateRow(updateManager: updateManager)
 
                 MenuRow(

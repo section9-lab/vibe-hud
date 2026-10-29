@@ -100,6 +100,7 @@ class ClaudeSessionMonitor: ObservableObject {
     // MARK: - Permission Handling
 
     func approvePermission(sessionId: String) {
+        AppAnalytics.shared.recordActivity()
         Task {
             guard let session = await SessionStore.shared.session(for: sessionId),
                   let permission = session.activePermission else {
@@ -118,6 +119,7 @@ class ClaudeSessionMonitor: ObservableObject {
     }
 
     func denyPermission(sessionId: String, reason: String?) {
+        AppAnalytics.shared.recordActivity()
         Task {
             guard let session = await SessionStore.shared.session(for: sessionId),
                   let permission = session.activePermission else {
