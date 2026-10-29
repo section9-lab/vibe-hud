@@ -110,7 +110,7 @@ vibe hud works with the current Claude config layout and can resolve the config 
 
 ## Updates
 
-vibe hud uses Sparkle for in-app updates, so installed builds can check for new versions and install them from the app.
+vibe hud checks for updates at launch and every hour through Sparkle. When an update is available, click **Update & Restart** once to download, install, and restart automatically. Download and installation progress stays visible in the notch menu.
 
 GitHub tag releases require the `SPARKLE_PRIVATE_KEY` Actions secret matching `SUPublicEDKey` in `VibeHUD/Info.plist`. The workflow signs each DMG and verifies its signature against the built app's public key before publishing. Keep this key pair across releases.
 

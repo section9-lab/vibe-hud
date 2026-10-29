@@ -43,6 +43,7 @@ class UpdateManager: NSObject, ObservableObject {
     private var downloadedBytes: Int64 = 0
     private var expectedBytes: Int64 = 0
     private var currentVersion: String = ""
+    private var installWhenReady = false
 
     // Callbacks from Sparkle
     private var installHandler: ((SPUUserUpdateChoice) -> Void)?
@@ -55,40 +56,61 @@ class UpdateManager: NSObject, ObservableObject {
     // MARK: - Public API
 
     func checkForUpdates() {
-        state = .checking
-        if let updater = AppDelegate.shared?.updater {
-            updater.checkForUpdates()
-        } else {
-            state = .error(message: "Updater not initialized")
+        guard !state.isActive else { return }
+        guard let updater = AppDelegate.shared?.updater else {
+            updateError("Updater not initialized")
+            return
         }
+        guard updater.canCheckForUpdates else { return }
+        state = .checking
+        updater.checkForUpdates()
     }
 
-    func downloadAndInstall() {
-        installHandler?(.install)
-    }
-
-    func installAndRelaunch() {
-        installHandler?(.install)
+    func installUpdate() {
+        let nextState: UpdateState
+        switch state {
+        case .found:
+            nextState = .downloading(progress: 0)
+        case .readyToInstall:
+            nextState = .installing
+        default:
+            return
+        }
+        guard let handler = installHandler else { return }
+        // Consume each Sparkle reply before invoking it: callbacks may reenter
+        // synchronously, and a second click must not reply to the same stage.
+        installHandler = nil
+        installWhenReady = true
+        markUpdateSeen()
+        state = nextState
+        handler(.install)
     }
 
     func skipUpdate() {
-        installHandler?(.skip)
+        let handler = installHandler
+        resetInstallation()
         state = .idle
+        handler?(.skip)
     }
 
     func dismissUpdate() {
-        installHandler?(.dismiss)
+        let handler = installHandler
+        resetInstallation()
         state = .idle
+        handler?(.dismiss)
     }
 
     func cancelDownload() {
-        cancellationHandler?()
+        let cancellation = cancellationHandler
+        resetInstallation()
         state = .idle
+        cancellation?()
     }
 
     // MARK: - Internal state updates (called by NotchUserDriver)
 
     func updateFound(version: String, releaseNotes: String?, installHandler: @escaping (SPUUserUpdateChoice) -> Void) {
+        resetInstallation()
         self.currentVersion = version
         self.installHandler = installHandler
         self.state = .found(version: version, releaseNotes: releaseNotes)
@@ -121,6 +143,7 @@ class UpdateManager: NSObject, ObservableObject {
     }
 
     func extractionStarted() {
+        self.cancellationHandler = nil
         self.state = .extracting(progress: 0)
     }
 
@@ -129,6 +152,14 @@ class UpdateManager: NSObject, ObservableObject {
     }
 
     func readyToInstall(installHandler: @escaping (SPUUserUpdateChoice) -> Void) {
+        if installWhenReady {
+            // The user already selected Update & Restart before downloading.
+            // Continue using the fresh installation reply without another prompt.
+            self.installHandler = nil
+            self.state = .installing
+            installHandler(.install)
+            return
+        }
         self.installHandler = installHandler
         self.state = .readyToInstall(version: currentVersion)
     }
@@ -138,10 +169,12 @@ class UpdateManager: NSObject, ObservableObject {
     }
 
     func installed(relaunched: Bool) {
+        resetInstallation()
         self.state = .idle
     }
 
     func noUpdateFound() {
+        resetInstallation()
         self.state = .upToDate
         // Reset to idle after a few seconds
         Task {
@@ -153,12 +186,12 @@ class UpdateManager: NSObject, ObservableObject {
     }
 
     func updateError(_ message: String) {
+        resetInstallation()
         self.state = .error(message: message)
     }
 
     func dismiss() {
-        self.installHandler = nil
-        self.cancellationHandler = nil
+        resetInstallation()
         // Sparkle dismisses installation after acknowledging the result.
         switch state {
         case .upToDate, .error:
@@ -166,6 +199,12 @@ class UpdateManager: NSObject, ObservableObject {
         default:
             self.state = .idle
         }
+    }
+
+    private func resetInstallation() {
+        installWhenReady = false
+        installHandler = nil
+        cancellationHandler = nil
     }
 }
 

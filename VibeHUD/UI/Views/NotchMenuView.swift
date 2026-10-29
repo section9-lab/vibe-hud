@@ -399,13 +399,13 @@ struct UpdateRow: View {
         case .upToDate:
             return "Check for Updates"
         case .found:
-            return "Download Update"
+            return "Update & Restart"
         case .downloading:
             return "Downloading..."
         case .extracting:
             return "Extracting..."
         case .readyToInstall:
-            return "Install & Relaunch"
+            return "Update & Restart"
         case .installing:
             return "Installing..."
         case .error:
@@ -441,10 +441,8 @@ struct UpdateRow: View {
         switch updateManager.state {
         case .idle, .upToDate, .error:
             updateManager.checkForUpdates()
-        case .found:
-            updateManager.downloadAndInstall()
-        case .readyToInstall:
-            updateManager.installAndRelaunch()
+        case .found, .readyToInstall:
+            updateManager.installUpdate()
         default:
             break
         }

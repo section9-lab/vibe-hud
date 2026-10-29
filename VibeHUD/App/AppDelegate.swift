@@ -8,7 +8,6 @@ import SwiftUI
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowManager: WindowManager?
     private var screenObserver: ScreenObserver?
-    private var updateCheckTimer: Timer?
     private var didInitializeMixpanel = false
 
     static var shared: AppDelegate?
@@ -33,6 +32,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         do {
             try updater.start()
+            if Foundation.ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil,
+               updater.automaticallyChecksForUpdates, updater.canCheckForUpdates {
+                updater.checkForUpdatesInBackground()
+            }
         } catch {
             print("Failed to start Sparkle updater: \(error)")
         }
@@ -87,16 +90,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.handleScreenChange()
             }
         }
-
-        if updater.canCheckForUpdates {
-            updater.checkForUpdates()
-        }
-
-        updateCheckTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) {
-            [weak self] _ in
-            guard let updater = self?.updater, updater.canCheckForUpdates else { return }
-            updater.checkForUpdates()
-        }
     }
 
     @MainActor
@@ -108,7 +101,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if didInitializeMixpanel {
             Mixpanel.mainInstance().flush()
         }
-        updateCheckTimer?.invalidate()
         screenObserver = nil
     }
 
