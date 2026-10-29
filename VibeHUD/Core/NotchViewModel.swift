@@ -27,13 +27,51 @@ enum NotchContentType: Equatable {
     case instances
     case menu
     case chat(SessionState)
+    case monitoring(NotchMonitoringPanel)
 
     var id: String {
         switch self {
         case .instances: return "instances"
         case .menu: return "menu"
         case .chat(let session): return "chat-\(session.sessionId)"
+        case .monitoring(let panel): return "monitoring-\(panel.rawValue)"
         }
+    }
+}
+
+enum NotchMonitoringPanel: String, Equatable {
+    case claude, codex, speed, tibo, overview
+}
+
+enum NotchAccessory: String, CaseIterable, Equatable {
+    case codex, claude, tibo, more
+    static let ringDiameter: CGFloat = 26
+
+    var width: CGFloat {
+        switch self {
+        case .codex, .claude: 30
+        case .tibo: 20
+        case .more: 30
+        }
+    }
+
+    var panel: NotchMonitoringPanel {
+        switch self {
+        case .claude: .claude
+        case .codex: .codex
+        case .tibo: .tibo
+        case .more: .overview
+        }
+    }
+
+    static func visible(codexQuota: Bool, codexSpeed: Bool,
+                        claude5h: Bool, claude7d: Bool, claudeSpeed: Bool,
+                        tiboAlert: Bool) -> [NotchAccessory] {
+        var entries: [NotchAccessory] = []
+        if codexQuota || codexSpeed { entries.append(.codex) }
+        if claude5h || claude7d || claudeSpeed { entries.append(.claude) }
+        if tiboAlert { entries.append(.tibo) }
+        return entries
     }
 }
 
@@ -50,6 +88,7 @@ class NotchViewModel: ObservableObject {
     @Published var openReason: NotchOpenReason = .unknown
     @Published var contentType: NotchContentType = .instances
     @Published var isHovering: Bool = false
+    @Published private(set) var hoveredAccessory: NotchAccessory?
     @Published var hookListExpanded: Bool = false
     @Published private(set) var menuContentHeight: CGFloat = 420
     @Published private(set) var instancesContentHeight: CGFloat = 80
@@ -68,6 +107,12 @@ class NotchViewModel: ObservableObject {
     var deviceNotchRect: CGRect { geometry.deviceNotchRect }
     var screenRect: CGRect { geometry.screenRect }
     var windowHeight: CGFloat { geometry.windowHeight }
+    private(set) var closedAccessories: [NotchAccessory] = []
+    var closedTrailingExtension: CGFloat {
+        closedAccessories.isEmpty ? 0 : NotchGeometry.accessoryInset
+            + closedAccessories.reduce(0) { $0 + $1.width }
+    }
+    var closedLeadingExtension: CGFloat = 38
 
     /// Dynamic opened size based on content type
     var openedSize: CGSize {
@@ -83,6 +128,8 @@ class NotchViewModel: ObservableObject {
                 width: min(screenRect.width * 0.32, 384),
                 height: min(windowHeight, deviceNotchRect.height + 12 + menuContentHeight)
             )
+        case .monitoring:
+            return CGSize(width: min(screenRect.width * 0.32, 384), height: 330)
         case .instances:
             return CGSize(
                 width: min(screenRect.width * 0.32, 384),
@@ -105,12 +152,14 @@ class NotchViewModel: ObservableObject {
 
     // MARK: - Initialization
 
-    init(deviceNotchRect: CGRect, screenRect: CGRect, windowHeight: CGFloat, hasPhysicalNotch: Bool)
+    init(deviceNotchRect: CGRect, screenRect: CGRect, windowHeight: CGFloat, hasPhysicalNotch: Bool,
+         topRightAreaWidth: CGFloat? = nil)
     {
         self.geometry = NotchGeometry(
             deviceNotchRect: deviceNotchRect,
             screenRect: screenRect,
-            windowHeight: windowHeight
+            windowHeight: windowHeight,
+            topRightAreaWidth: topRightAreaWidth
         )
         self.hasPhysicalNotch = hasPhysicalNotch
         setupEventHandlers()
@@ -166,15 +215,44 @@ class NotchViewModel: ObservableObject {
     /// The chat session we're viewing (persists across close/open)
     private var currentChatSession: SessionState?
 
+    func configureClosedAccessories(_ accessories: [NotchAccessory], leadingExtension: CGFloat) {
+        let total = accessories.reduce(CGFloat.zero) { $0 + $1.width }
+            + (accessories.isEmpty ? 0 : NotchGeometry.accessoryInset)
+        if total <= geometry.maximumTrailingAccessoryWidth {
+            closedAccessories = accessories
+        } else {
+            closedAccessories = geometry.maximumTrailingAccessoryWidth >= NotchAccessory.more.width
+                + NotchGeometry.accessoryInset ? [.more] : []
+        }
+        closedLeadingExtension = max(0, leadingExtension)
+        objectWillChange.send()
+    }
+
+    private func accessory(at location: CGPoint) -> NotchAccessory? {
+        let notch = geometry.notchScreenRect
+        guard (notch.minY - 5...notch.maxY + 5).contains(location.y),
+              location.x >= notch.maxX else { return nil }
+        var cursor = notch.maxX + NotchGeometry.accessoryInset
+        for accessory in closedAccessories {
+            cursor += accessory.width
+            if location.x <= cursor { return accessory }
+        }
+        return nil
+    }
+
     private func handleMouseMove(_ location: CGPoint) {
-        let inNotch = geometry.isPointInNotch(location)
+        let hoveredAccessory = status == .closed || status == .popping ? accessory(at: location) : nil
+        let accessoryChanged = self.hoveredAccessory != hoveredAccessory
+        if accessoryChanged { self.hoveredAccessory = hoveredAccessory }
+        let inNotch = status != .opened && geometry.isPointInClosedContent(location,
+            leadingExtension: closedLeadingExtension, trailingExtension: closedTrailingExtension)
         let inOpened =
             status == .opened && geometry.isPointInOpenedPanel(location, size: openedSize)
 
         let newHovering = inNotch || inOpened
 
         // Only update if changed to prevent unnecessary re-renders
-        guard newHovering != isHovering else { return }
+        guard newHovering != isHovering || accessoryChanged else { return }
 
         isHovering = newHovering
 
@@ -185,8 +263,13 @@ class NotchViewModel: ObservableObject {
         // Start hover timer to auto-expand after 1 second
         if isHovering && (status == .closed || status == .popping) {
             let workItem = DispatchWorkItem { [weak self] in
-                guard let self = self, self.isHovering else { return }
-                self.notchOpen(reason: .hover)
+                guard let self = self, self.isHovering,
+                      self.status == .closed || self.status == .popping else { return }
+                if let accessory = self.accessory(at: NSEvent.mouseLocation) {
+                    self.showMonitoring(accessory.panel, reason: .hover)
+                } else {
+                    self.notchOpen(reason: .hover)
+                }
             }
             hoverTimer = workItem
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
@@ -209,7 +292,11 @@ class NotchViewModel: ObservableObject {
                 }
             }
         case .closed, .popping:
-            if geometry.isPointInNotch(location) {
+            if let accessory = accessory(at: location) {
+                showMonitoring(accessory.panel, reason: .click)
+            } else if geometry.isPointInClosedContent(location,
+                        leadingExtension: closedLeadingExtension,
+                        trailingExtension: closedTrailingExtension) {
                 notchOpen(reason: .click)
             }
         }
@@ -249,12 +336,15 @@ class NotchViewModel: ObservableObject {
     // MARK: - Actions
 
     func notchOpen(reason: NotchOpenReason = .unknown) {
+        hoverTimer?.cancel()
+        hoverTimer = nil
         openReason = reason
         status = .opened
 
         // Don't restore chat on notification - show instances list instead
         if reason == .notification {
             currentChatSession = nil
+            contentType = .instances
             return
         }
 
@@ -266,6 +356,20 @@ class NotchViewModel: ObservableObject {
             }
             contentType = .chat(chatSession)
         }
+    }
+
+    var canAutoPresentMonitoring: Bool {
+        status == .closed && currentChatSession == nil && !isHovering
+    }
+
+    func showMonitoring(_ panel: NotchMonitoringPanel, reason: NotchOpenReason) {
+        openReason = reason
+        contentType = .monitoring(panel)
+        status = .opened
+    }
+
+    func exitMonitoring() {
+        contentType = .instances
     }
 
     func notchClose() {

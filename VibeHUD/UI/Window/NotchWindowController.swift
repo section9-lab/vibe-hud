@@ -14,7 +14,9 @@ class NotchWindowController: NSWindowController {
     private let screen: NSScreen
     private var cancellables = Set<AnyCancellable>()
 
-    init(screen: NSScreen, animateOnLaunch: Bool = true) {
+    init(screen: NSScreen, animateOnLaunch: Bool = true,
+         preferences: AppPreferences = .shared,
+         monitoringStore: MonitoringStore = .shared) {
         self.screen = screen
 
         let screenFrame = screen.frame
@@ -42,7 +44,8 @@ class NotchWindowController: NSWindowController {
             deviceNotchRect: deviceNotchRect,
             screenRect: screenFrame,
             windowHeight: windowHeight,
-            hasPhysicalNotch: screen.hasPhysicalNotch
+            hasPhysicalNotch: screen.hasPhysicalNotch,
+            topRightAreaWidth: screen.auxiliaryTopRightArea?.width
         )
 
         // Create the window
@@ -56,7 +59,9 @@ class NotchWindowController: NSWindowController {
         super.init(window: notchWindow)
 
         // Create the SwiftUI view with pass-through hosting
-        let hostingController = NotchViewController(viewModel: viewModel)
+        let hostingController = NotchViewController(
+            viewModel: viewModel, preferences: preferences, monitoringStore: monitoringStore
+        )
         notchWindow.contentViewController = hostingController
 
         notchWindow.setFrame(windowFrame, display: true)

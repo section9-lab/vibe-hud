@@ -19,6 +19,7 @@ private struct InstancesContentHeightPreferenceKey: PreferenceKey {
 struct ClaudeInstancesView: View {
     @ObservedObject var sessionMonitor: ClaudeSessionMonitor
     @ObservedObject var viewModel: NotchViewModel
+    @ObservedObject private var preferences = AppPreferences.shared
 
     var body: some View {
         VStack(spacing: 8) {
@@ -37,11 +38,11 @@ struct ClaudeInstancesView: View {
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Text("No sessions")
+            Text(AppLocalization.string("sessions.emptyTitle", language: preferences.language))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.white.opacity(0.4))
 
-            Text("Run claudecode, codex, or opencode in terminal")
+            Text(AppLocalization.string("sessions.emptyHint", language: preferences.language))
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.25))
         }

@@ -45,6 +45,69 @@ struct NotchViewModelTests {
         #expect(model.contentType == .instances)
         #expect(!model.hookListExpanded)
     }
+
+    @Test("Closed monitoring switches to one entry when native space is narrow")
+    func closedMonitoringCompacts() {
+        let narrow = NotchViewModel(
+            deviceNotchRect: CGRect(x: 0, y: 0, width: 200, height: 32),
+            screenRect: CGRect(x: 0, y: 0, width: 1_200, height: 800),
+            windowHeight: 700, hasPhysicalNotch: true, topRightAreaWidth: 120
+        )
+        let entries: [NotchAccessory] = [.codex, .claude, .tibo]
+        narrow.configureClosedAccessories(entries, leadingExtension: 0)
+        #expect(narrow.closedAccessories == [.more])
+
+        let wide = makeModel(screenWidth: 2_000)
+        wide.configureClosedAccessories(entries, leadingExtension: 0)
+        #expect(wide.closedAccessories == entries)
+        wide.configureClosedAccessories([], leadingExtension: 0)
+        #expect(wide.closedAccessories.isEmpty)
+        #expect(wide.closedTrailingExtension == 0)
+        #expect(wide.closedLeadingExtension == 0)
+
+        let builtin = NotchViewModel(
+            deviceNotchRect: CGRect(x: 0, y: 0, width: 183, height: 32),
+            screenRect: CGRect(x: 0, y: 0, width: 1_470, height: 956),
+            windowHeight: 750, hasPhysicalNotch: true, topRightAreaWidth: 645.5
+        )
+        builtin.configureClosedAccessories(entries, leadingExtension: 0)
+        #expect(builtin.closedAccessories == entries)
+        #expect(builtin.closedTrailingExtension == 84)
+        builtin.configureClosedAccessories([.codex], leadingExtension: 0)
+        #expect(builtin.closedTrailingExtension == 34)
+    }
+
+    @Test("Each source shares one ring and every hidden item removes its cell")
+    func visibleRingCombinations() {
+        let both = NotchAccessory.visible(codexQuota: true, codexSpeed: true,
+                                          claude5h: true, claude7d: true, claudeSpeed: true,
+                                          tiboAlert: false)
+        let quotaOnly = NotchAccessory.visible(codexQuota: true, codexSpeed: false,
+                                               claude5h: false, claude7d: false, claudeSpeed: false,
+                                               tiboAlert: false)
+        let speedOnly = NotchAccessory.visible(codexQuota: false, codexSpeed: true,
+                                               claude5h: false, claude7d: false, claudeSpeed: false,
+                                               tiboAlert: false)
+        let hidden = NotchAccessory.visible(codexQuota: false, codexSpeed: false,
+                                            claude5h: false, claude7d: false, claudeSpeed: false,
+                                            tiboAlert: false)
+        let onlyClaude5h = NotchAccessory.visible(codexQuota: false, codexSpeed: false,
+                                                  claude5h: true, claude7d: false, claudeSpeed: false,
+                                                  tiboAlert: false)
+        let onlyClaude7d = NotchAccessory.visible(codexQuota: false, codexSpeed: false,
+                                                  claude5h: false, claude7d: true, claudeSpeed: false,
+                                                  tiboAlert: false)
+        let onlyClaudeSpeed = NotchAccessory.visible(codexQuota: false, codexSpeed: false,
+                                                     claude5h: false, claude7d: false, claudeSpeed: true,
+                                                     tiboAlert: false)
+        #expect(both == [.codex, .claude])
+        #expect(quotaOnly == [.codex])
+        #expect(speedOnly == [.codex])
+        #expect(onlyClaude5h == [.claude])
+        #expect(onlyClaude7d == [.claude])
+        #expect(onlyClaudeSpeed == [.claude])
+        #expect(hidden.isEmpty)
+    }
 }
 
 @MainActor

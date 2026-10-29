@@ -14,8 +14,17 @@ private let logger = Logger(subsystem: "com.vibehud", category: "Window")
 @MainActor
 class WindowManager {
     private(set) var windowController: NotchWindowController?
-    private var isInitialLaunch = true
+    private var isInitialLaunch: Bool
     private var currentScreenFrame: NSRect?
+    private let preferences: AppPreferences
+    private let monitoringStore: MonitoringStore
+
+    init(preferences: AppPreferences, monitoringStore: MonitoringStore,
+         animateOnLaunch: Bool = true) {
+        self.preferences = preferences
+        self.monitoringStore = monitoringStore
+        self.isInitialLaunch = animateOnLaunch
+    }
 
     /// Set up or recreate the notch window
     func setupNotchWindow() -> NotchWindowController? {
@@ -47,7 +56,12 @@ class WindowManager {
         }
 
         currentScreenFrame = screen.frame
-        windowController = NotchWindowController(screen: screen, animateOnLaunch: shouldAnimate)
+        windowController = NotchWindowController(
+            screen: screen,
+            animateOnLaunch: shouldAnimate,
+            preferences: preferences,
+            monitoringStore: monitoringStore
+        )
         windowController?.showWindow(nil)
 
         return windowController

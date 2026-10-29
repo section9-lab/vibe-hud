@@ -8,7 +8,6 @@
 import ApplicationServices
 import Combine
 import ServiceManagement
-import Sparkle
 import SwiftUI
 
 // MARK: - NotchMenuView
@@ -23,12 +22,23 @@ private struct MenuContentHeightPreferenceKey: PreferenceKey {
 
 struct NotchMenuView: View {
     @ObservedObject var viewModel: NotchViewModel
-    @ObservedObject private var updateManager = UpdateManager.shared
+    @ObservedObject private var preferences = AppPreferences.shared
     @ObservedObject private var screenSelector = ScreenSelector.shared
     @ObservedObject private var soundSelector = SoundSelector.shared
+    @ObservedObject private var updateManager = UpdateManager.shared
     @State private var hookStates: [HookAgent: Bool] = [:]
     @State private var isHooksExpanded: Bool = false
     @State private var launchAtLogin: Bool = false
+    @State private var expandedSection: MenuSection?
+    @State private var loginError: String?
+    @State private var hookError: String?
+    @State private var linkError: String?
+
+    private enum MenuSection: Equatable { case language, display, tibo }
+
+    private func tr(_ key: String) -> String {
+        AppLocalization.string(key, language: preferences.language)
+    }
 
     var body: some View {
         // ScrollView so the menu gracefully scrolls when content exceeds the
@@ -38,18 +48,46 @@ struct NotchMenuView: View {
                 // Back button
                 MenuRow(
                     icon: "chevron.left",
-                    label: "Back"
+                    label: tr("menu.back")
                 ) {
                     viewModel.toggleMenu()
+                }
+
+                if AppRuntime.isPreview {
+                    Text(tr("menu.previewNotice"))
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.55))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
                 }
 
                 Divider()
                     .background(Color.white.opacity(0.08))
                     .padding(.vertical, 4)
 
-                // Appearance settings
                 ScreenPickerRow(screenSelector: screenSelector)
                 SoundPickerRow(soundSelector: soundSelector)
+
+                sectionRow(.language, icon: "globe", label: tr("menu.language"), detail: preferences.language.displayName)
+                if expandedSection == .language {
+                    ForEach(AppLanguage.allCases) { language in
+                        MenuToggleRow(icon: "character.bubble", label: language.displayName,
+                                      isOn: preferences.language == language, isNested: true) {
+                            preferences.language = language
+                        }
+                    }
+                }
+
+                sectionRow(.display, icon: "eye", label: tr("menu.display"))
+                if expandedSection == .display {
+                    ForEach(DisplayItem.allCases) { item in
+                        MenuToggleRow(icon: "circle.grid.2x2", label: tr(item.titleKey),
+                                      isOn: preferences.isVisible(item), isNested: true) {
+                            preferences.setVisible(!preferences.isVisible(item), for: item)
+                        }
+                    }
+                }
 
                 Divider()
                     .background(Color.white.opacity(0.08))
@@ -58,9 +96,14 @@ struct NotchMenuView: View {
                 // System settings
                 MenuToggleRow(
                     icon: "power",
-                    label: "Launch at Login",
+                    label: tr("menu.launchAtLogin"),
                     isOn: launchAtLogin
                 ) {
+                    loginError = nil
+                    if AppRuntime.isPreview {
+                        launchAtLogin.toggle()
+                        return
+                    }
                     do {
                         if launchAtLogin {
                             try SMAppService.mainApp.unregister()
@@ -70,9 +113,10 @@ struct NotchMenuView: View {
                             launchAtLogin = true
                         }
                     } catch {
-                        print("Failed to toggle launch at login: \(error)")
+                        loginError = "\(tr("menu.launchAtLoginFailed")): \(error.localizedDescription)"
                     }
                 }
+                if let loginError { feedbackRow(loginError) }
 
                 Button {
                     isHooksExpanded.toggle()
@@ -84,7 +128,7 @@ struct NotchMenuView: View {
                             .foregroundColor(.white.opacity(0.7))
                             .frame(width: 16)
 
-                        Text("Agent Hooks")
+                        Text(tr("menu.agentHooks"))
                             .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.white.opacity(0.7))
 
@@ -126,22 +170,19 @@ struct NotchMenuView: View {
                         toggleHook(.workBuddy)
                     }
                 }
+                if let hookError { feedbackRow(hookError) }
 
-                AccessibilityRow(isEnabled: AXIsProcessTrusted())
+                AccessibilityRow()
 
-                Divider()
-                    .background(Color.white.opacity(0.08))
-                    .padding(.vertical, 4)
-
-                // About
-                UpdateRow(updateManager: updateManager)
-
-                MenuRow(
-                    icon: "star",
-                    label: "Star on GitHub"
-                ) {
-                    if let url = URL(string: "https://github.com/section9-lab/VibeHUD") {
-                        NSWorkspace.shared.open(url)
+                sectionRow(.tibo, icon: "bell", label: "Tibo")
+                if expandedSection == .tibo {
+                    MenuToggleRow(icon: "network", label: tr("menu.tiboNetworking"),
+                                  isOn: preferences.tiboNetworking, isNested: true) {
+                        preferences.tiboNetworking.toggle()
+                    }
+                    MenuToggleRow(icon: "bell.badge", label: tr("menu.tiboNotifications"),
+                                  isOn: preferences.tiboNotifications, isNested: true) {
+                        preferences.tiboNotifications.toggle()
                     }
                 }
 
@@ -149,12 +190,37 @@ struct NotchMenuView: View {
                     .background(Color.white.opacity(0.08))
                     .padding(.vertical, 4)
 
+                // About
+                VersionRow(label: tr("menu.version"))
+
+                MenuRow(icon: "arrow.up.circle", label: updateLabel) {
+                    handleUpdateAction()
+                }
+
+                MenuRow(icon: "questionmark.circle", label: tr("menu.help")) {
+                    openExternalPage("https://github.com/section9-lab/VibeHUD#readme")
+                }
+
+                MenuRow(
+                    icon: "star",
+                    label: tr("menu.starGitHub")
+                ) {
+                    openExternalPage("https://github.com/section9-lab/VibeHUD")
+                }
+                if let linkError { feedbackRow(linkError) }
+
+                Divider()
+                    .background(Color.white.opacity(0.08))
+                    .padding(.vertical, 4)
+
                 MenuRow(
                     icon: "xmark.circle",
-                    label: "Quit",
+                    label: tr("menu.quit"),
                     isDestructive: true
                 ) {
-                    NSApplication.shared.terminate(nil)
+                    if !AppRuntime.isPreview {
+                        NSApplication.shared.terminate(nil)
+                    }
                 }
             }
             .padding(.horizontal, 8)
@@ -189,6 +255,7 @@ struct NotchMenuView: View {
     }
 
     private func refreshStates() {
+        guard !AppRuntime.isPreview else { return }
         hookStates = Dictionary(uniqueKeysWithValues: HookAgent.allCases.map {
             ($0, HookInstaller.isInstalled($0))
         })
@@ -201,21 +268,104 @@ struct NotchMenuView: View {
     }
 
     private func toggleHook(_ agent: HookAgent) {
+        hookError = nil
+        if AppRuntime.isPreview {
+            hookStates[agent] = !hookState(for: agent)
+            return
+        }
+        let shouldInstall = !hookState(for: agent)
         if hookState(for: agent) {
             HookInstaller.uninstall(agent)
         } else {
             HookInstaller.install(agent)
         }
         hookStates[agent] = HookInstaller.isInstalled(agent)
+        if hookStates[agent] != shouldInstall {
+            hookError = tr("menu.agentHooksFailed")
+        }
+    }
+
+    private func openExternalPage(_ address: String) {
+        linkError = nil
+        guard !AppRuntime.isPreview else { return }
+        guard let url = URL(string: address), NSWorkspace.shared.open(url) else {
+            linkError = tr("menu.openPageFailed")
+            return
+        }
+    }
+
+    private var updateLabel: String {
+        if AppRuntime.isLocalBuild || AppRuntime.isPreview {
+            return tr("menu.checkUpdatesReleases")
+        }
+        switch updateManager.state {
+        case .idle, .upToDate: return tr("menu.checkUpdates")
+        case .checking: return tr("menu.checkingUpdates")
+        case .found: return tr("menu.downloadUpdate")
+        case .downloading: return tr("menu.downloadingUpdate")
+        case .extracting: return tr("menu.extractingUpdate")
+        case .readyToInstall: return tr("menu.installUpdate")
+        case .installing: return tr("menu.installingUpdate")
+        case .error: return tr("menu.updateFailed")
+        }
+    }
+
+    private func handleUpdateAction() {
+        if AppRuntime.isLocalBuild || AppRuntime.isPreview {
+            openExternalPage("https://github.com/section9-lab/VibeHUD/releases")
+            return
+        }
+        switch updateManager.state {
+        case .idle, .upToDate, .error: updateManager.checkForUpdates()
+        case .found: updateManager.downloadAndInstall()
+        case .readyToInstall: updateManager.installAndRelaunch()
+        default: break
+        }
+    }
+
+    private func feedbackRow(_ message: String) -> some View {
+        Text(message)
+            .font(.system(size: 10))
+            .foregroundColor(Color(red: 1, green: 0.58, blue: 0.58))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+    }
+
+    private func sectionRow(_ section: MenuSection, icon: String, label: String, detail: String? = nil) -> some View {
+        Button {
+            expandedSection = expandedSection == section ? nil : section
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.7))
+                    .frame(width: 16)
+                Text(label)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+                Spacer()
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                Image(systemName: expandedSection == section ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.04)))
+        }
+        .buttonStyle(.plain)
     }
 }
 
-// MARK: - Update Row
+// MARK: - Local Version Row
 
-struct UpdateRow: View {
-    @ObservedObject var updateManager: UpdateManager
-    @State private var isHovered = false
-    @State private var isSpinning = false
+struct VersionRow: View {
+    let label: String
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -223,295 +373,96 @@ struct UpdateRow: View {
     }
 
     var body: some View {
-        Button {
-            handleTap()
-        } label: {
-            HStack(spacing: 10) {
-                // Icon
-                ZStack {
-                    if case .installing = updateManager.state {
-                        Image(systemName: "gear")
-                            .font(.system(size: 12))
-                            .foregroundColor(TerminalColors.blue)
-                            .rotationEffect(.degrees(isSpinning ? 360 : 0))
-                            .animation(
-                                .linear(duration: 1).repeatForever(autoreverses: false),
-                                value: isSpinning
-                            )
-                            .onAppear { isSpinning = true }
-                    } else {
-                        Image(systemName: icon)
-                            .font(.system(size: 12))
-                            .foregroundColor(iconColor)
-                    }
-                }
+        HStack(spacing: 10) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 12))
+                .foregroundColor(.white.opacity(0.7))
                 .frame(width: 16)
-
-                // Label
-                Text(label)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(labelColor)
-
-                Spacer()
-
-                // Right side: progress or status
-                rightContent
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isHovered && isInteractive ? Color.white.opacity(0.08) : Color.clear)
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(!isInteractive)
-        .onHover { isHovered = $0 }
-        .animation(.easeInOut(duration: 0.2), value: updateManager.state)
-    }
-
-    // MARK: - Right Content
-
-    @ViewBuilder
-    private var rightContent: some View {
-        switch updateManager.state {
-        case .idle:
+            Text(label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.white.opacity(0.7))
+            Spacer()
             Text(appVersion)
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.4))
-
-        case .upToDate:
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(TerminalColors.green)
-                Text("Up to date")
-                    .font(.system(size: 11))
-                    .foregroundColor(TerminalColors.green)
-            }
-
-        case .checking, .installing:
-            ProgressView()
-                .scaleEffect(0.5)
-                .frame(width: 12, height: 12)
-
-        case .found(let version, _):
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(TerminalColors.green)
-                    .frame(width: 6, height: 6)
-                Text("v\(version)")
-                    .font(.system(size: 11))
-                    .foregroundColor(TerminalColors.green)
-            }
-
-        case .downloading(let progress):
-            HStack(spacing: 8) {
-                ProgressView(value: progress)
-                    .frame(width: 60)
-                    .tint(TerminalColors.blue)
-                Text("\(Int(progress * 100))%")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(TerminalColors.blue)
-                    .frame(width: 32, alignment: .trailing)
-            }
-
-        case .extracting(let progress):
-            HStack(spacing: 8) {
-                ProgressView(value: progress)
-                    .frame(width: 60)
-                    .tint(TerminalColors.amber)
-                Text("\(Int(progress * 100))%")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(TerminalColors.amber)
-                    .frame(width: 32, alignment: .trailing)
-            }
-
-        case .readyToInstall(let version):
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(TerminalColors.green)
-                    .frame(width: 6, height: 6)
-                Text("v\(version)")
-                    .font(.system(size: 11))
-                    .foregroundColor(TerminalColors.green)
-            }
-
-        case .error:
-            Text("Retry")
-                .font(.system(size: 11))
-                .foregroundColor(.white.opacity(0.5))
         }
-    }
-
-    // MARK: - Computed Properties
-
-    private var icon: String {
-        switch updateManager.state {
-        case .idle:
-            return "arrow.down.circle"
-        case .checking:
-            return "arrow.down.circle"
-        case .upToDate:
-            return "checkmark.circle.fill"
-        case .found:
-            return "arrow.down.circle.fill"
-        case .downloading:
-            return "arrow.down.circle"
-        case .extracting:
-            return "doc.zipper"
-        case .readyToInstall:
-            return "checkmark.circle.fill"
-        case .installing:
-            return "gear"
-        case .error:
-            return "exclamationmark.circle"
-        }
-    }
-
-    private var iconColor: Color {
-        switch updateManager.state {
-        case .idle:
-            return .white.opacity(isHovered ? 1.0 : 0.7)
-        case .checking:
-            return .white.opacity(0.7)
-        case .upToDate:
-            return TerminalColors.green
-        case .found, .readyToInstall:
-            return TerminalColors.green
-        case .downloading:
-            return TerminalColors.blue
-        case .extracting:
-            return TerminalColors.amber
-        case .installing:
-            return TerminalColors.blue
-        case .error:
-            return Color(red: 1.0, green: 0.4, blue: 0.4)
-        }
-    }
-
-    private var label: String {
-        switch updateManager.state {
-        case .idle:
-            return "Check for Updates"
-        case .checking:
-            return "Checking..."
-        case .upToDate:
-            return "Check for Updates"
-        case .found:
-            return "Download Update"
-        case .downloading:
-            return "Downloading..."
-        case .extracting:
-            return "Extracting..."
-        case .readyToInstall:
-            return "Install & Relaunch"
-        case .installing:
-            return "Installing..."
-        case .error:
-            return "Update failed"
-        }
-    }
-
-    private var labelColor: Color {
-        switch updateManager.state {
-        case .idle, .upToDate:
-            return .white.opacity(isHovered ? 1.0 : 0.7)
-        case .checking, .downloading, .extracting, .installing:
-            return .white.opacity(0.9)
-        case .found, .readyToInstall:
-            return TerminalColors.green
-        case .error:
-            return Color(red: 1.0, green: 0.4, blue: 0.4)
-        }
-    }
-
-    private var isInteractive: Bool {
-        switch updateManager.state {
-        case .idle, .upToDate, .found, .readyToInstall, .error:
-            return true
-        case .checking, .downloading, .extracting, .installing:
-            return false
-        }
-    }
-
-    // MARK: - Actions
-
-    private func handleTap() {
-        switch updateManager.state {
-        case .idle, .upToDate, .error:
-            updateManager.checkForUpdates()
-        case .found:
-            updateManager.downloadAndInstall()
-        case .readyToInstall:
-            updateManager.installAndRelaunch()
-        default:
-            break
-        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 }
 
 // MARK: - Accessibility Permission Row
 
 struct AccessibilityRow: View {
-    let isEnabled: Bool
+    @ObservedObject private var preferences = AppPreferences.shared
 
     @State private var isHovered = false
     @State private var refreshTrigger = false
+    @State private var previewEnabled = false
+    @State private var openError: String?
 
     private var currentlyEnabled: Bool {
-        // Re-check on each render when refreshTrigger changes
         _ = refreshTrigger
-        return isEnabled
+        return AppRuntime.isPreview ? previewEnabled : AXIsProcessTrusted()
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "hand.raised")
-                .font(.system(size: 12))
-                .foregroundColor(textColor)
-                .frame(width: 16)
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "hand.raised")
+                    .font(.system(size: 12))
+                    .foregroundColor(textColor)
+                    .frame(width: 16)
 
-            Text("Accessibility")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(textColor)
+                Text(AppLocalization.string("menu.accessibility", language: preferences.language))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(textColor)
 
-            Spacer()
+                Spacer()
 
-            if isEnabled {
-                Circle()
-                    .fill(TerminalColors.green)
-                    .frame(width: 6, height: 6)
+                if currentlyEnabled {
+                    Circle()
+                        .fill(TerminalColors.green)
+                        .frame(width: 6, height: 6)
 
-                Text("On")
-                    .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.4))
-            } else {
-                Button(action: openAccessibilitySettings) {
-                    Text("Enable")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5)
-                                .fill(Color.white)
-                        )
+                    Text(AppLocalization.string("menu.enabled", language: preferences.language))
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.4))
+                } else {
+                    Button(action: openAccessibilitySettings) {
+                        Text(AppLocalization.string("menu.enable", language: preferences.language))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .fill(Color.white)
+                            )
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
-        )
-        .onHover { isHovered = $0 }
-        .onReceive(
-            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-        ) { _ in
-            refreshTrigger.toggle()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isHovered ? Color.white.opacity(0.08) : Color.clear)
+            )
+            .onHover { isHovered = $0 }
+            .onReceive(
+                NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            ) { _ in
+                refreshTrigger.toggle()
+            }
+            if let openError {
+                Text(openError)
+                    .font(.system(size: 10))
+                    .foregroundColor(Color(red: 1, green: 0.58, blue: 0.58))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 4)
+            }
         }
     }
 
@@ -520,10 +471,19 @@ struct AccessibilityRow: View {
     }
 
     private func openAccessibilitySettings() {
+        openError = nil
+        if AppRuntime.isPreview {
+            previewEnabled.toggle()
+            return
+        }
         if let url = URL(
             string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
         {
-            NSWorkspace.shared.open(url)
+            if !NSWorkspace.shared.open(url) {
+                openError = AppLocalization.string("menu.accessibilityFailed", language: preferences.language)
+            }
+        } else {
+            openError = AppLocalization.string("menu.accessibilityFailed", language: preferences.language)
         }
     }
 }
@@ -571,6 +531,7 @@ struct MenuRow: View {
 }
 
 struct MenuToggleRow: View {
+    @ObservedObject private var preferences = AppPreferences.shared
     let icon: String?
     let source: SessionSource?
     let label: String
@@ -633,7 +594,8 @@ struct MenuToggleRow: View {
                     .fill(isOn ? TerminalColors.green : Color.white.opacity(0.3))
                     .frame(width: 6, height: 6)
 
-                Text(isOn ? "On" : "Off")
+                Text(AppLocalization.string(isOn ? "menu.enabled" : "menu.disabled",
+                                            language: preferences.language))
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.4))
             }

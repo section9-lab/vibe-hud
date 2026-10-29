@@ -5,6 +5,29 @@ import Testing
 
 @Suite("Agent brand icons")
 struct AgentBrandIconTests {
+    @Test("Loads a bundled PNG when a compiled asset catalog is unavailable")
+    @MainActor
+    func loadsPackagedPNG() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let bundleURL = root.appendingPathComponent("Sample.bundle")
+        let resources = bundleURL.appendingPathComponent("Contents/Resources")
+        try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let image = NSImage(size: NSSize(width: 2, height: 2))
+        image.lockFocus()
+        NSColor.red.setFill()
+        NSRectFill(NSRect(x: 0, y: 0, width: 2, height: 2))
+        image.unlockFocus()
+        let bitmap = try #require(NSBitmapImageRep(data: try #require(image.tiffRepresentation)))
+        let png = try #require(bitmap.representation(using: .png, properties: [:]))
+        try png.write(to: resources.appendingPathComponent("AgentGPT.png"))
+        let bundle = try #require(Bundle(url: bundleURL))
+
+        #expect(AgentBrandIcon.packagedPNG(named: "AgentGPT", in: bundle) != nil)
+        #expect(AgentBrandIcon.packagedPNG(named: "AgentClaude", in: bundle) == nil)
+    }
+
     @Test(
         "Maps agents to packaged LobeHub assets",
         arguments: [

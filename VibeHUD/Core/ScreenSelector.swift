@@ -126,25 +126,29 @@ class ScreenSelector: ObservableObject {
     }
 
     private func loadPreferences() {
-        if let modeString = UserDefaults.standard.string(forKey: modeKey),
+        let defaults = AppRuntime.isPreview
+            ? UserDefaults(suiteName: AppRuntime.previewSuite)! : UserDefaults.standard
+        if let modeString = defaults.string(forKey: modeKey),
            let mode = ScreenSelectionMode(rawValue: modeString) {
             selectionMode = mode
         }
 
-        if let data = UserDefaults.standard.data(forKey: screenIdentifierKey),
+        if let data = defaults.data(forKey: screenIdentifierKey),
            let identifier = try? JSONDecoder().decode(ScreenIdentifier.self, from: data) {
             savedIdentifier = identifier
         }
     }
 
     private func savePreferences() {
-        UserDefaults.standard.set(selectionMode.rawValue, forKey: modeKey)
+        let defaults = AppRuntime.isPreview
+            ? UserDefaults(suiteName: AppRuntime.previewSuite)! : UserDefaults.standard
+        defaults.set(selectionMode.rawValue, forKey: modeKey)
 
         if let identifier = savedIdentifier,
            let data = try? JSONEncoder().encode(identifier) {
-            UserDefaults.standard.set(data, forKey: screenIdentifierKey)
+            defaults.set(data, forKey: screenIdentifierKey)
         } else {
-            UserDefaults.standard.removeObject(forKey: screenIdentifierKey)
+            defaults.removeObject(forKey: screenIdentifierKey)
         }
     }
 }

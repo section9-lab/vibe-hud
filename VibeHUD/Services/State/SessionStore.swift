@@ -8,7 +8,9 @@
 
 import Combine
 import Foundation
+#if canImport(Mixpanel) && !VIBEHUD_LOCAL
 import Mixpanel
+#endif
 import os.log
 
 private struct PendingCodexCompletion: Sendable {
@@ -156,7 +158,9 @@ actor SessionStore {
             clearCodexCompletionTracking(sessionId: sessionId)
             return
         }
+        #if canImport(Mixpanel) && !VIBEHUD_LOCAL
         let isNewSession = sessions[sessionId] == nil
+        #endif
         var session = sessions[sessionId] ?? createSession(from: event)
 
         guard hookEventSequence.shouldAccept(
@@ -173,10 +177,12 @@ actor SessionStore {
             session.lastEventTimestamp = eventTimestamp
         }
 
-        // Track new session in Mixpanel
-        if isNewSession {
+        #if canImport(Mixpanel) && !VIBEHUD_LOCAL
+        if isNewSession && !AppRuntime.isLocalBuild && !AppRuntime.isPreview
+            && ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
             Mixpanel.mainInstance().track(event: "Session Started")
         }
+        #endif
 
         session.pid = event.pid ?? session.pid
         if let pid = event.pid {

@@ -1,14 +1,21 @@
 import AppKit
+import Combine
 import Darwin
 import IOKit
+#if canImport(Mixpanel) && !VIBEHUD_LOCAL
 import Mixpanel
+#endif
 import Sparkle
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowManager: WindowManager?
     private var screenObserver: ScreenObserver?
+    private var takeoverTimer: Timer?
     private var updateCheckTimer: Timer?
+    private var launchedWithTakeover = false
+    private var forcedPreview = false
+    private var tiboNetworkingSubscription: AnyCancellable?
     private var didInitializeMixpanel = false
 
     static var shared: AppDelegate?
@@ -30,11 +37,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         super.init()
         AppDelegate.shared = self
-
-        do {
-            try updater.start()
-        } catch {
-            print("Failed to start Sparkle updater: \(error)")
+        if !AppRuntime.isLocalBuild && !AppRuntime.isPreview
+            && Foundation.ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            do { try updater.start() }
+            catch { print("Failed to start Sparkle updater: \(error)") }
         }
     }
 
@@ -48,39 +54,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        Mixpanel.initialize(token: "49814c1436104ed108f3fc4735228496")
-        didInitializeMixpanel = true
+        if !AppRuntime.isLocalBuild && !AppRuntime.isPreview { initializeUpstreamTelemetry() }
 
-        let distinctId = getOrCreateDistinctId()
-        Mixpanel.mainInstance().identify(distinctId: distinctId)
-
-        let version =
-            Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
-        let osVersion = Foundation.ProcessInfo.processInfo.operatingSystemVersionString
-
-        Mixpanel.mainInstance().registerSuperProperties([
-            "app_version": version,
-            "build_number": build,
-            "macos_version": osVersion,
-        ])
-
-        fetchAndRegisterClaudeVersion()
-
-        Mixpanel.mainInstance().people.set(properties: [
-            "app_version": version,
-            "build_number": build,
-            "macos_version": osVersion,
-        ])
-
-        Mixpanel.mainInstance().track(event: "App Launched")
-        Mixpanel.mainInstance().flush()
-
-        HookInstaller.installIfNeeded()
         NSApplication.shared.setActivationPolicy(.accessory)
 
-        windowManager = WindowManager()
+        forcedPreview = Foundation.ProcessInfo.processInfo.arguments.contains("--preview")
+            || Foundation.ProcessInfo.processInfo.environment["FDAR_USAGE_PREVIEW"] == "1"
+        UserDefaults.standard.synchronize()
+        launchedWithTakeover = !forcedPreview && (!AppRuntime.isLocalBuild
+            || !AppRuntime.requiresTakeover
+            || UserDefaults.standard.bool(forKey: "usageNotch.nativeTakeover"))
+        if !launchedWithTakeover {
+            setenv("FDAR_USAGE_PREVIEW", "1", 1)
+            configurePreviewLanguage()
+        }
+        let store = launchedWithTakeover ? MonitoringStore.shared : MonitoringStore.preview()
+        tiboNetworkingSubscription = AppPreferences.shared.$tiboNetworking.sink { enabled in
+            store.collectTibo = enabled
+        }
+        let hasPreviewPage = Foundation.ProcessInfo.processInfo.arguments.contains {
+            $0.hasPrefix("--preview-page=")
+        }
+        if !AppRuntime.isLocalBuild && launchedWithTakeover { HookInstaller.installIfNeeded() }
+        windowManager = WindowManager(
+            preferences: AppPreferences.shared,
+            monitoringStore: store,
+            animateOnLaunch: !hasPreviewPage
+        )
         _ = windowManager?.setupNotchWindow()
+        if !launchedWithTakeover {
+            presentPreviewPage()
+        }
 
         screenObserver = ScreenObserver { [weak self] in
             Task { @MainActor in
@@ -88,15 +92,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        if updater.canCheckForUpdates {
-            updater.checkForUpdates()
+        if launchedWithTakeover {
+            MonitoringStore.shared.start()
+        }
+        if AppRuntime.isLocalBuild && AppRuntime.requiresTakeover {
+            takeoverTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) {
+                [weak self] _ in
+                Task { @MainActor in self?.checkTakeoverChange() }
+            }
+        } else if !AppRuntime.isLocalBuild && !forcedPreview {
+            if updater.canCheckForUpdates { updater.checkForUpdates() }
+            updateCheckTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) {
+                [weak self] _ in
+                guard let updater = self?.updater, updater.canCheckForUpdates else { return }
+                updater.checkForUpdates()
+            }
         }
 
-        updateCheckTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) {
-            [weak self] _ in
-            guard let updater = self?.updater, updater.canCheckForUpdates else { return }
-            updater.checkForUpdates()
-        }
     }
 
     @MainActor
@@ -104,14 +116,96 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         _ = windowManager?.setupNotchWindow()
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
-        if didInitializeMixpanel {
-            Mixpanel.mainInstance().flush()
+    @MainActor
+    private func configurePreviewLanguage() {
+        let argument = Foundation.ProcessInfo.processInfo.arguments.first {
+            $0.hasPrefix("--preview-language=")
         }
+        guard let value = argument?.split(separator: "=", maxSplits: 1).last,
+              value == "zh" || value == "en" else { return }
+        let language = value == "zh" ? "zh-Hans" : "en"
+        UserDefaults(suiteName: AppRuntime.previewSuite)?
+            .set(language, forKey: "usageHUD.language")
+    }
+
+    @MainActor
+    private func presentPreviewPage() {
+        guard let argument = Foundation.ProcessInfo.processInfo.arguments.first(where: {
+            $0.hasPrefix("--preview-page=")
+        }), let page = argument.split(separator: "=", maxSplits: 1).last,
+              let model = windowManager?.windowController?.viewModel else { return }
+        switch page {
+        case "settings":
+            model.notchOpen(reason: .click)
+            model.toggleMenu()
+        case "overview": model.showMonitoring(.overview, reason: .click)
+        case "claude": model.showMonitoring(.claude, reason: .click)
+        case "codex": model.showMonitoring(.codex, reason: .click)
+        case "speed": model.showMonitoring(.speed, reason: .click)
+        case "tibo": model.showMonitoring(.tibo, reason: .click)
+        default: break
+        }
+    }
+
+    @MainActor
+    private func checkTakeoverChange() {
+        guard !forcedPreview, AppRuntime.requiresTakeover else { return }
+        UserDefaults.standard.synchronize()
+        let enabled = UserDefaults.standard.bool(forKey: "usageNotch.nativeTakeover")
+        if enabled != launchedWithTakeover {
+            NSApplication.shared.terminate(nil)
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        #if canImport(Mixpanel) && !VIBEHUD_LOCAL
+        if didInitializeMixpanel { Mixpanel.mainInstance().flush() }
+        #endif
+        takeoverTimer?.invalidate()
         updateCheckTimer?.invalidate()
+        tiboNetworkingSubscription = nil
+        if launchedWithTakeover {
+            MonitoringStore.shared.stop()
+        }
         screenObserver = nil
     }
 
+    private func ensureSingleInstance() -> Bool {
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.section9-lab.VibeHUD"
+        let otherInstance = NSWorkspace.shared.runningApplications.first {
+            $0.bundleIdentifier == bundleID && $0.processIdentifier != getpid()
+        }
+
+        if let existingApp = otherInstance {
+            existingApp.activate()
+            return false
+        }
+
+        return true
+    }
+
+    private func initializeUpstreamTelemetry() {
+        #if canImport(Mixpanel) && !VIBEHUD_LOCAL
+        // The upstream Xcode target supplies Mixpanel; local SwiftPM builds omit it.
+        Mixpanel.initialize(token: "49814c1436104ed108f3fc4735228496")
+        didInitializeMixpanel = true
+        Mixpanel.mainInstance().identify(distinctId: getOrCreateDistinctId())
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
+        let osVersion = Foundation.ProcessInfo.processInfo.operatingSystemVersionString
+        Mixpanel.mainInstance().registerSuperProperties([
+            "app_version": version, "build_number": build, "macos_version": osVersion,
+        ])
+        fetchAndRegisterClaudeVersion()
+        Mixpanel.mainInstance().people.set(properties: [
+            "app_version": version, "build_number": build, "macos_version": osVersion,
+        ])
+        Mixpanel.mainInstance().track(event: "App Launched")
+        Mixpanel.mainInstance().flush()
+        #endif
+    }
+
+    #if canImport(Mixpanel) && !VIBEHUD_LOCAL
     private func getOrCreateDistinctId() -> String {
         let key = "mixpanel_distinct_id"
 
@@ -196,17 +290,5 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func ensureSingleInstance() -> Bool {
-        let bundleID = Bundle.main.bundleIdentifier ?? "com.section9-lab.VibeHUD"
-        let otherInstance = NSWorkspace.shared.runningApplications.first {
-            $0.bundleIdentifier == bundleID && $0.processIdentifier != getpid()
-        }
-
-        if let existingApp = otherInstance {
-            existingApp.activate()
-            return false
-        }
-
-        return true
-    }
+    #endif
 }

@@ -38,4 +38,68 @@ struct NotchGeometryTests {
 
         #expect(renderedRightEdge == geometry.notchScreenRect.maxX)
     }
+
+    @Test("Closed accessories sit beside the physical notch and stay hittable")
+    func closedAccessoriesStayBesidePhysicalNotch() {
+        let left: CGFloat = 38
+        let right: CGFloat = 92
+        let renderedWidth = geometry.deviceNotchRect.width + left + right
+        let offset = geometry.closedContentOffset(forRenderedWidth: renderedWidth,
+                                                   trailingExtension: right)
+        let renderedLeft = geometry.screenRect.midX - renderedWidth / 2 + offset
+        #expect(renderedLeft + left == geometry.notchScreenRect.minX)
+        #expect(geometry.isPointInClosedContent(
+            CGPoint(x: geometry.notchScreenRect.maxX + 45, y: geometry.notchScreenRect.midY),
+            leadingExtension: left, trailingExtension: right))
+        #expect(!geometry.isPointInClosedContent(
+            CGPoint(x: geometry.notchScreenRect.maxX + right + 10,
+                    y: geometry.notchScreenRect.midY),
+            leadingExtension: left, trailingExtension: right))
+    }
+
+    @Test("Native top-right area limits monitoring width")
+    func nativeSafeAreaLimitsAccessoryWidth() {
+        let narrow = NotchGeometry(deviceNotchRect: geometry.deviceNotchRect,
+                                   screenRect: geometry.screenRect,
+                                   windowHeight: geometry.windowHeight,
+                                   topRightAreaWidth: 90)
+        #expect(narrow.maximumTrailingAccessoryWidth == 28)
+        #expect(geometry.maximumTrailingAccessoryWidth > narrow.maximumTrailingAccessoryWidth)
+    }
+
+    @Test("Idle notch has no left extension and one Codex ring adds exactly 34 pt on the right")
+    func idleCodexRingPlacement() {
+        let physical = geometry.closedContentScreenRect(leadingExtension: 0, trailingExtension: 0)
+        let codex = geometry.closedContentScreenRect(leadingExtension: 0, trailingExtension: 34)
+        let offset = geometry.closedContentOffset(forRenderedWidth: 234, trailingExtension: 34)
+        let renderedLeft = geometry.screenRect.midX - 117 + offset
+        #expect(physical == geometry.notchScreenRect)
+        #expect(codex.minX == physical.minX)
+        #expect(codex.maxX == physical.maxX + 34)
+        #expect(renderedLeft == physical.minX)
+    }
+
+    @Test("Codex and nested Claude rings sit outside the camera housing and remain hittable")
+    func providerRingsOutsideCamera() {
+        let rect = geometry.closedContentScreenRect(leadingExtension: 0, trailingExtension: 64)
+        let firstRingX = geometry.notchScreenRect.maxX + NotchGeometry.accessoryInset + 15
+        let secondRingX = firstRingX + 30
+        #expect(rect.minX == geometry.notchScreenRect.minX)
+        #expect(firstRingX > geometry.notchScreenRect.maxX)
+        #expect(secondRingX < rect.maxX)
+        for x in [firstRingX, secondRingX] {
+            #expect(geometry.isPointInClosedContent(
+                CGPoint(x: x, y: geometry.notchScreenRect.midY),
+                leadingExtension: 0, trailingExtension: 64))
+        }
+    }
+
+    @Test("Hidden monitoring contracts back to the physical notch")
+    func hiddenMonitoringContracts() {
+        let rect = geometry.closedContentScreenRect(leadingExtension: 0, trailingExtension: 0)
+        #expect(rect == geometry.notchScreenRect)
+        #expect(!geometry.isPointInClosedContent(
+            CGPoint(x: rect.maxX + 12, y: rect.midY),
+            leadingExtension: 0, trailingExtension: 0))
+    }
 }

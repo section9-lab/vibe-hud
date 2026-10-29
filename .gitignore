@@ -31,6 +31,10 @@ playground.xcworkspace
 .DS_Store
 .claude/settings.local.json
 build/
+build-local/
+.build/
+__pycache__/
+*.py[cod]
 releases/
 # CocoaPods
 #

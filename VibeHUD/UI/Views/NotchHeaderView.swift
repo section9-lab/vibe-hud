@@ -39,7 +39,7 @@ struct AgentBrandIcon: View {
                     .resizable()
                     .renderingMode(.template)
             } else if let assetName = source.brandAssetName {
-                Image(assetName)
+                brandImage(named: assetName)
                     .resizable()
                     .renderingMode(renderingMode)
             } else if let applicationIcon {
@@ -60,6 +60,20 @@ struct AgentBrandIcon: View {
 
     private var renderingMode: Image.TemplateRenderingMode {
         style == .monochrome ? .template : .original
+    }
+
+    private func brandImage(named assetName: String) -> Image {
+        if let png = Self.packagedPNG(named: assetName, in: .main) {
+            return Image(nsImage: png)
+        }
+        return Image(assetName)
+    }
+
+    static func packagedPNG(named assetName: String, in bundle: Bundle) -> NSImage? {
+        guard let url = bundle.url(forResource: assetName, withExtension: "png") else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
     }
 
     private var applicationIcon: NSImage? {

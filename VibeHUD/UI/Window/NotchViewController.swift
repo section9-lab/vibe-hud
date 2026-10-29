@@ -24,10 +24,16 @@ class PassThroughHostingView<Content: View>: NSHostingView<Content> {
 
 class NotchViewController: NSViewController {
     private let viewModel: NotchViewModel
+    private let preferences: AppPreferences
+    private let monitoringStore: MonitoringStore
     private var hostingView: PassThroughHostingView<NotchView>!
 
-    init(viewModel: NotchViewModel) {
+    init(viewModel: NotchViewModel,
+         preferences: AppPreferences = .shared,
+         monitoringStore: MonitoringStore = .shared) {
         self.viewModel = viewModel
+        self.preferences = preferences
+        self.monitoringStore = monitoringStore
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -36,7 +42,9 @@ class NotchViewController: NSViewController {
     }
 
     override func loadView() {
-        hostingView = PassThroughHostingView(rootView: NotchView(viewModel: viewModel))
+        hostingView = PassThroughHostingView(rootView: NotchView(
+            viewModel: viewModel, preferences: preferences, monitoringStore: monitoringStore
+        ))
 
         // Calculate the hit-test rect based on panel state
         hostingView.hitTestRect = { [weak self] in
@@ -62,15 +70,16 @@ class NotchViewController: NSViewController {
                     height: panelHeight
                 )
             case .closed, .popping:
-                // When closed, use the notch rect
-                let notchRect = geometry.deviceNotchRect
-                let screenWidth = geometry.screenRect.width
-                // Add some padding for easier interaction
+                // Match the rendered capsule, including the right-side status items.
+                let rect = geometry.closedContentScreenRect(
+                    leadingExtension: vm.closedLeadingExtension,
+                    trailingExtension: vm.closedTrailingExtension
+                )
                 return CGRect(
-                    x: (screenWidth - notchRect.width) / 2 - 10,
-                    y: windowHeight - notchRect.height - 5,
-                    width: notchRect.width + 20,
-                    height: notchRect.height + 10
+                    x: rect.minX - geometry.screenRect.minX - 3,
+                    y: windowHeight - rect.height - 5,
+                    width: rect.width + 6,
+                    height: rect.height + 10
                 )
             }
         }

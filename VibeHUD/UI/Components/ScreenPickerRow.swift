@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ScreenPickerRow: View {
     @ObservedObject var screenSelector: ScreenSelector
+    @ObservedObject private var preferences = AppPreferences.shared
     @State private var isHovered = false
 
     private var isExpanded: Bool {
@@ -33,7 +34,7 @@ struct ScreenPickerRow: View {
                         .foregroundColor(textColor)
                         .frame(width: 16)
 
-                    Text("Screen")
+                    Text(tr("menu.screen"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(textColor)
 
@@ -63,8 +64,8 @@ struct ScreenPickerRow: View {
                 VStack(spacing: 2) {
                     // Automatic option
                     ScreenOptionRow(
-                        label: "Automatic",
-                        sublabel: "Built-in or Main",
+                        label: tr("menu.automatic"),
+                        sublabel: tr("menu.builtinOrMain"),
                         isSelected: screenSelector.selectionMode == .automatic
                     ) {
                         screenSelector.selectAutomatic()
@@ -95,12 +96,12 @@ struct ScreenPickerRow: View {
     private var currentSelectionLabel: String {
         switch screenSelector.selectionMode {
         case .automatic:
-            return "Auto"
+            return tr("menu.auto")
         case .specificScreen:
             if let screen = screenSelector.selectedScreen {
                 return screen.localizedName
             }
-            return "Auto"
+            return tr("menu.auto")
         }
     }
 
@@ -111,15 +112,20 @@ struct ScreenPickerRow: View {
     private func screenSublabel(for screen: NSScreen) -> String? {
         var parts: [String] = []
         if screen.isBuiltinDisplay {
-            parts.append("Built-in")
+            parts.append(tr("menu.builtin"))
         }
         if screen == NSScreen.main {
-            parts.append("Main")
+            parts.append(tr("menu.main"))
         }
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 
+    private func tr(_ key: String) -> String {
+        AppLocalization.string(key, language: preferences.language)
+    }
+
     private func triggerWindowRecreation() {
+        guard !AppRuntime.isPreview else { return }
         // Notify to recreate the window
         NotificationCenter.default.post(
             name: NSApplication.didChangeScreenParametersNotification,

@@ -10,6 +10,7 @@ import SwiftUI
 
 struct SoundPickerRow: View {
     @ObservedObject var soundSelector: SoundSelector
+    @ObservedObject private var preferences = AppPreferences.shared
     @State private var isHovered = false
     @State private var selectedSound: NotificationSound = AppSettings.notificationSound
 
@@ -35,13 +36,13 @@ struct SoundPickerRow: View {
                         .foregroundColor(textColor)
                         .frame(width: 16)
 
-                    Text("Notification Sound")
+                    Text(AppLocalization.string("menu.notificationSound", language: preferences.language))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(textColor)
 
                     Spacer()
 
-                    Text(selectedSound.rawValue)
+                    Text(selectedSound.displayName)
                         .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.4))
                         .lineLimit(1)
@@ -70,7 +71,7 @@ struct SoundPickerRow: View {
                                 isSelected: selectedSound == sound
                             ) {
                                 // Play preview sound
-                                if let soundName = sound.soundName {
+                                if !AppRuntime.isPreview, let soundName = sound.soundName {
                                     NSSound(named: soundName)?.play()
                                 }
                                 selectedSound = sound
@@ -110,7 +111,7 @@ private struct SoundOptionRowInline: View {
                     .fill(isSelected ? TerminalColors.green : Color.white.opacity(0.2))
                     .frame(width: 6, height: 6)
 
-                Text(sound.rawValue)
+                Text(sound.displayName)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.white.opacity(isHovered ? 1.0 : 0.7))
 

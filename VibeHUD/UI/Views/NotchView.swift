@@ -20,14 +20,27 @@ struct NotchView: View {
     @StateObject private var sessionMonitor = ClaudeSessionMonitor()
     @StateObject private var activityCoordinator = NotchActivityCoordinator.shared
     @ObservedObject private var updateManager = UpdateManager.shared
+    @ObservedObject private var preferences: AppPreferences
+    @ObservedObject private var monitoringStore: MonitoringStore
     @State private var previousPendingIds: Set<String> = []
     @State private var previousWaitingForInputIds: Set<String> = []
     @State private var waitingForInputTimestamps: [String: Date] = [:]  // sessionId -> when it entered waitingForInput
     @State private var isVisible: Bool = true
     @State private var isHovering: Bool = false
     @State private var isBouncing: Bool = false
+    @State private var presentedTiboID: String?
+    @State private var sessionBaselineReady = false
+    @State private var tiboHoverToken = 0
 
     @Namespace private var activityNamespace
+
+    init(viewModel: NotchViewModel,
+         preferences: AppPreferences = .shared,
+         monitoringStore: MonitoringStore = .shared) {
+        self.viewModel = viewModel
+        self._preferences = ObservedObject(wrappedValue: preferences)
+        self._monitoringStore = ObservedObject(wrappedValue: monitoringStore)
+    }
 
     private var prioritizedActiveSession: SessionState? {
         sessionMonitor.instances
@@ -49,7 +62,7 @@ struct NotchView: View {
         switch viewModel.contentType {
         case .chat(let session):
             return sessionMonitor.instances.first { $0.sessionId == session.sessionId }?.source ?? session.source
-        case .instances, .menu:
+        case .instances, .menu, .monitoring:
             return prioritizedActiveSession?.source ?? sessionMonitor.instances.sorted { $0.lastActivity > $1.lastActivity }.first?.source ?? .claude
         }
     }
@@ -125,6 +138,25 @@ struct NotchView: View {
         closedNotchSize.width + expansionWidth
     }
 
+    private var requestedAccessories: [NotchAccessory] {
+        NotchAccessory.visible(
+            codexQuota: preferences.isVisible(.codexQuota),
+            codexSpeed: preferences.isVisible(.codexSpeed),
+            claude5h: preferences.isVisible(.claudeFiveHour),
+            claude7d: preferences.isVisible(.claudeSevenDay),
+            claudeSpeed: preferences.isVisible(.claudeSpeed),
+            tiboAlert: preferences.isVisible(.tiboEntry) && monitoringStore.tibo.shouldPresent
+        )
+    }
+
+    private var displayedAccessories: [NotchAccessory] { viewModel.closedAccessories }
+
+    private func synchronizeClosedAccessories() {
+        let leading = showClosedActivity
+            ? CGFloat(38 + (hasPendingPermission ? 18 : 0) + (isBouncing ? 16 : 0)) : 0
+        viewModel.configureClosedAccessories(requestedAccessories, leadingExtension: leading)
+    }
+
     // MARK: - Corner Radii
 
     private var topCornerRadius: CGFloat {
@@ -198,18 +230,33 @@ struct NotchView: View {
                             isHovering = hovering
                         }
                     }
-                    .onTapGesture {
-                        if viewModel.status != .opened {
-                            viewModel.notchOpen(reason: .click)
-                        }
-                    }
             }
         }
         .opacity(isVisible ? 1 : 0)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .preferredColorScheme(.dark)
+        .environment(\.locale, Locale(identifier: preferences.language.rawValue))
         .onAppear {
-            sessionMonitor.startMonitoring()
+            if !monitoringStore.isPreview { sessionMonitor.startMonitoring() }
+            synchronizeClosedAccessories()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                sessionBaselineReady = true
+                tryAutoPresentMonitoring()
+            }
+        }
+        .onChange(of: requestedAccessories) { _, _ in synchronizeClosedAccessories() }
+        .onChange(of: showClosedActivity) { _, _ in synchronizeClosedAccessories() }
+        .onChange(of: hasPendingPermission) { _, _ in synchronizeClosedAccessories() }
+        .onChange(of: isBouncing) { _, _ in synchronizeClosedAccessories() }
+        .onChange(of: monitoringStore.tibo) { _, _ in tryAutoPresentMonitoring() }
+        .onChange(of: viewModel.isHovering) { _, hovering in
+            if hovering, viewModel.status == .opened,
+               viewModel.contentType == .monitoring(.tibo),
+               let id = monitoringStore.tibo.alert?.id {
+                scheduleTiboHoverRead(id)
+            } else {
+                tiboHoverToken += 1
+            }
         }
         .onChange(of: viewModel.status) { oldStatus, newStatus in
             handleStatusChange(from: oldStatus, to: newStatus)
@@ -220,14 +267,16 @@ struct NotchView: View {
         .onChange(of: sessionMonitor.instances) { _, instances in
             handleProcessingChange()
             handleWaitingForInputChange(instances)
+            tryAutoPresentMonitoring()
         }
     }
 
     // MARK: - Notch Layout
 
-    /// Keep a persistent status icon visible while the notch is closed.
+    /// Idle leaves the physical notch untouched; live session state keeps its cue.
     private var showClosedActivity: Bool {
-        true
+        prioritizedActiveSession != nil || hasPendingPermission || hasWaitingForInput
+            || activityCoordinator.expandingActivity.show
     }
 
     @ViewBuilder
@@ -261,7 +310,7 @@ struct NotchView: View {
             // Left side - agent activity + optional permission indicator
             if showClosedActivity {
                 HStack(spacing: 4) {
-                    AgentActivityRings(summary: agentActivitySummary, size: 26)
+                    AgentActivityRings(summary: agentActivitySummary, size: NotchAccessory.ringDiameter)
                         .matchedGeometryEffect(id: "agent-activity", in: activityNamespace, isSource: showClosedActivity)
 
                     // Permission indicator only (amber) - waiting for input shows checkmark on right
@@ -279,15 +328,34 @@ struct NotchView: View {
                 // Opened: show header content
                 openedHeaderContent
             } else if !showClosedActivity {
-                // Closed without activity: empty space
+                // The physical camera housing occupies this whole spacer.
                 Rectangle()
-                    .fill(.clear)
-                    .frame(width: closedNotchSize.width - 20)
+                    .fill(.black)
+                    .frame(width: closedNotchSize.width - 2 * cornerRadiusInsets.closed.top)
             } else {
                 // Closed with activity: black spacer (with optional bounce)
                 Rectangle()
                     .fill(.black)
                     .frame(width: closedNotchSize.width - cornerRadiusInsets.closed.top + (isBouncing ? 16 : 0))
+            }
+
+            if viewModel.status != .opened && !displayedAccessories.isEmpty {
+                HStack(spacing: 0) {
+                    ForEach(displayedAccessories, id: \.self) { accessory in
+                        Button {
+                            viewModel.showMonitoring(accessory.panel, reason: .click)
+                        } label: {
+                            ClosedMonitoringAccessory(accessory: accessory,
+                                                      store: monitoringStore,
+                                                      preferences: preferences,
+                                                      notchHeight: closedNotchSize.height)
+                                .frame(width: accessory.width, height: closedNotchSize.height)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.leading, NotchGeometry.accessoryInset)
             }
 
         }
@@ -299,17 +367,22 @@ struct NotchView: View {
     }
 
     private var closedRenderedWidth: CGFloat {
+        guard showClosedActivity else {
+            return closedNotchSize.width + viewModel.closedTrailingExtension
+        }
         let permissionIndicatorWidth: CGFloat = hasPendingPermission ? 18 : 0
         let bounceWidth: CGFloat = isBouncing ? 16 : 0
         let headerWidth = sideWidth + permissionIndicatorWidth
             + closedNotchSize.width - cornerRadiusInsets.closed.top + bounceWidth
+            + viewModel.closedTrailingExtension
         return headerWidth + 2 * cornerRadiusInsets.closed.top
     }
 
     /// Keep the closed state's right edge aligned with the physical notch.
     private var closedNotchOffset: CGFloat {
         guard viewModel.status != .opened else { return 0 }
-        return viewModel.geometry.closedContentOffset(forRenderedWidth: closedRenderedWidth)
+        return viewModel.geometry.closedContentOffset(forRenderedWidth: closedRenderedWidth,
+            trailingExtension: viewModel.closedTrailingExtension)
     }
 
     // MARK: - Opened Header Content
@@ -368,6 +441,25 @@ struct NotchView: View {
                 )
             case .menu:
                 NotchMenuView(viewModel: viewModel)
+            case .monitoring(let panel):
+                MonitoringNotchContent(panel: panel, store: monitoringStore,
+                                       preferences: preferences,
+                                       onBack: {
+                                           if panel == .tibo,
+                                              let id = monitoringStore.tibo.alert?.id {
+                                               monitoringStore.dismissTiboAlert(id)
+                                           }
+                                           viewModel.exitMonitoring()
+                                       },
+                                       onSelect: { viewModel.showMonitoring($0, reason: .click) },
+                                       onPresented: { monitoringDidAppear(panel) })
+                    .id(panel)
+                    .onDisappear {
+                        if panel == .tibo, viewModel.status == .closed,
+                           let id = monitoringStore.tibo.alert?.id {
+                            monitoringStore.dismissTiboAlert(id)
+                        }
+                    }
             case .chat(let session):
                 let latestSession = sessionMonitor.instances.first { $0.sessionId == session.sessionId } ?? session
                 ChatView(
@@ -385,6 +477,12 @@ struct NotchView: View {
     // MARK: - Event Handlers
 
     private func handleProcessingChange() {
+        if (isAnyProcessing || hasPendingPermission || hasWaitingForInput),
+           viewModel.status == .opened,
+           viewModel.openReason == .notification,
+           case .monitoring = viewModel.contentType {
+            viewModel.contentType = .instances
+        }
         if isAnyProcessing || hasPendingPermission {
             activityCoordinator.showActivity(type: notchActivityType(for: prioritizedActiveSession?.source ?? .claude))
             isVisible = true
@@ -407,11 +505,57 @@ struct NotchView: View {
                 waitingForInputTimestamps.removeAll()
             }
         case .closed:
-            break
+            DispatchQueue.main.async { tryAutoPresentMonitoring() }
+        }
+    }
+
+    private func monitoringDidAppear(_ panel: NotchMonitoringPanel) {
+        guard viewModel.status == .opened else { return }
+        if panel == .tibo, let id = monitoringStore.tibo.alert?.id {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                guard viewModel.status == .opened,
+                      viewModel.contentType == .monitoring(.tibo),
+                      monitoringStore.tibo.alert?.id == id else { return }
+                presentedTiboID = id
+                if !monitoringStore.isPreview {
+                    UserDefaults.standard.set(id, forKey: "monitoring.tibo.presentedID")
+                }
+                if viewModel.openReason == .click { monitoringStore.dismissTiboAlert(id) }
+            }
+            if viewModel.isHovering { scheduleTiboHoverRead(id) }
+        }
+    }
+
+    private func scheduleTiboHoverRead(_ id: String) {
+        tiboHoverToken += 1
+        let token = tiboHoverToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            guard tiboHoverToken == token, viewModel.status == .opened,
+                  viewModel.contentType == .monitoring(.tibo), viewModel.isHovering,
+                  monitoringStore.tibo.alert?.id == id else { return }
+            monitoringStore.dismissTiboAlert(id)
+        }
+    }
+
+    private func tryAutoPresentMonitoring() {
+        guard sessionBaselineReady, viewModel.canAutoPresentMonitoring,
+              !hasPendingPermission, !hasWaitingForInput, !isAnyProcessing,
+              prioritizedActiveSession == nil else { return }
+        if preferences.isVisible(.tiboEntry), preferences.tiboNotifications,
+           monitoringStore.tibo.shouldPresent,
+           let id = monitoringStore.tibo.alert?.id,
+           id != presentedTiboID,
+           (monitoringStore.isPreview || UserDefaults.standard.string(forKey: "monitoring.tibo.presentedID") != id) {
+            viewModel.showMonitoring(.tibo, reason: .notification)
         }
     }
 
     private func handlePendingSessionsChange(_ sessions: [SessionState]) {
+        if !sessions.isEmpty, viewModel.status == .opened,
+           viewModel.openReason == .notification,
+           case .monitoring = viewModel.contentType {
+            viewModel.contentType = .instances
+        }
         let currentIds = Set(sessions.map { $0.stableId })
         let newPendingIds = currentIds.subtracting(previousPendingIds)
 

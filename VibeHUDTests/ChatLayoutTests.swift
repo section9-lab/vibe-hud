@@ -1,5 +1,4 @@
 import AppKit
-import Mixpanel
 import SwiftUI
 import XCTest
 @testable import vibe_hud
@@ -7,7 +6,6 @@ import XCTest
 @MainActor
 final class ChatLayoutTests: XCTestCase {
     func testChatRemainsResponsiveWhenOpeningAndUpdatingHistory() async throws {
-        Mixpanel.initialize(token: "layout-test", optOutTrackingByDefault: true)
         let id = UUID().uuidString
         let manager = ChatHistoryManager.shared
         let monitor = ClaudeSessionMonitor()
