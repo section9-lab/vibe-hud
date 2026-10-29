@@ -1,6 +1,7 @@
 /* Fixed export coordinates preserve the original 1200 × 800 animation. */
 html, body { margin: 0; background: rgb(24 27 31); }
-.readme-stage { position: relative; width: 1280px; height: 880px; }
+body { width: 2560px; height: 1760px; overflow: hidden; }
+.readme-stage { position: relative; width: 1280px; height: 880px; transform: scale(2); transform-origin: top left; }
 .readme-device { position: absolute; left: 36px; top: 36px; width: 1208px; padding: 4px; --mac-frame-radius: 40px; }
 .readme-device .macbook-bezel { padding: 15px; }
 .readme-device .macbook-screen { width: 1168px; height: 728px; }

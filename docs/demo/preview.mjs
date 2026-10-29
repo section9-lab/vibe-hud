@@ -25,7 +25,7 @@ import '../assets/css/readme-desktop.css'
 ---
 <!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width" /><title>vibe hud desktop scenery</title></head><body><ReadmeDesktop client:load /></body></html>
 `)
-console.log(`Preview source: ${stage}\nCapture http://localhost:4322/readme-demo/ as a full-page screenshot at viewport width 1280.`)
+console.log(`Preview source: ${stage}\nCapture http://localhost:4322/readme-demo/ as a full-page 2560 × 1760 screenshot (2× native render).`)
 const astro = JSON.parse(await readFile(join(website, 'node_modules/astro/package.json'), 'utf8'))
 const child = spawn(process.execPath, [join(website, 'node_modules/astro', astro.bin.astro), 'dev', '--root', stage, '--host', '127.0.0.1', '--port', '4322'], { stdio: 'inherit' })
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal))
