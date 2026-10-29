@@ -24,6 +24,8 @@ The owner's project is **minicode**, project ID **4078569**, using US data resid
 
 Use `America/Los_Angeles` for daily deduplication in every app, matching this project's US/Pacific timezone. Calendar arithmetic handles daylight saving changes. The last reported day is persisted across app restarts; the app checks again on the next interaction, so remaining open overnight does not prevent future daily events. If the project timezone changes, update the applications' reporting timezone as well.
 
+Development and production builds keep separate local identifiers, SDK queues and daily deduplication state, so a development run cannot suppress a production active day.
+
 Anonymous identifiers are scoped to each app. They measure active installations, not people deduplicated across devices or apps. Never reuse a hardware identifier or a shared machine identifier to join these records.
 
 ## Dashboard

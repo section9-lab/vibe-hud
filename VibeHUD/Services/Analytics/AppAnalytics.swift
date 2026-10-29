@@ -7,6 +7,12 @@ final class AppAnalytics: ObservableObject {
     static let shared = AppAnalytics()
     static let appID = "vibe-hud"
 
+    #if DEBUG
+        private static let environment = "development"
+    #else
+        private static let environment = "production"
+    #endif
+
     @Published private(set) var isEnabled: Bool
     private let state: AnalyticsState
     private var client: MixpanelInstance?
@@ -14,7 +20,7 @@ final class AppAnalytics: ObservableObject {
     private init() {
         // Must match the shared project's reporting timezone (currently US/Pacific).
         state = AnalyticsState(
-            appID: Self.appID,
+            appID: "\(Self.appID).\(Self.environment)",
             timeZone: TimeZone(identifier: "America/Los_Angeles")!
         )
         isEnabled = state.isEnabled
@@ -30,7 +36,7 @@ final class AppAnalytics: ObservableObject {
         let installationID = "\(Self.appID):\(state.installationID)"
         let options = MixpanelOptions(
             token: token,
-            instanceName: "\(Self.appID)-usage-v1",
+            instanceName: "\(Self.appID)-\(Self.environment)-usage-v1",
             trackAutomaticEvents: false,
             useUniqueDistinctId: false,
             superProperties: commonProperties,
@@ -81,11 +87,6 @@ final class AppAnalytics: ObservableObject {
     }
 
     private var commonProperties: Properties {
-        #if DEBUG
-            let environment = "development"
-        #else
-            let environment = "production"
-        #endif
         return [
             "app_id": Self.appID,
             "app_name": "vibe hud",
@@ -94,7 +95,7 @@ final class AppAnalytics: ObservableObject {
             "build_number": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
                 ?? "unknown",
             "platform": "macOS",
-            "environment": environment,
+            "environment": Self.environment,
             "macos_version": Foundation.ProcessInfo.processInfo.operatingSystemVersionString,
         ]
     }
