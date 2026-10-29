@@ -34,6 +34,6 @@ All six apps share the free monthly event allowance. This implementation sends a
 
 ## Privacy and verification
 
-The settings menu has a **Share Anonymous Usage** switch. Disabled installations do not initialize analytics on launch, and disabling an already running client opts it out. No conversation text, prompt, command, tool result, project path, session ID, hardware UUID or agent version is included. IP-based geolocation is disabled.
+The settings menu has a **Share Anonymous Usage** switch. Disabled installations do not initialize analytics on launch, and disabling an already running client opts it out. No conversation text, prompt, command, tool result, project path, agent session ID, hardware UUID or agent version is included. IP-based geolocation is disabled.
 
 Verify from a normal app build by opening the HUD, then inspect Mixpanel's Events view for `App Launched` and `Daily Active` with `app_id = vibe-hud`. Repeated interactions and a restart on the same reporting day must not produce a second `Daily Active`. Development/test validation events should be filtered from product metrics; automated tests use isolated local preferences and send no network events.

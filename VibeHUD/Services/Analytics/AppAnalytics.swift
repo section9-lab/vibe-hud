@@ -22,7 +22,7 @@ final class AppAnalytics: ObservableObject {
 
     func start() {
         guard client == nil, isEnabled,
-            ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil,
+            Foundation.ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil,
             let token = Bundle.main.object(forInfoDictionaryKey: "MixpanelProjectToken") as? String,
             !token.isEmpty
         else { return }
@@ -95,7 +95,7 @@ final class AppAnalytics: ObservableObject {
                 ?? "unknown",
             "platform": "macOS",
             "environment": environment,
-            "macos_version": ProcessInfo.processInfo.operatingSystemVersionString,
+            "macos_version": Foundation.ProcessInfo.processInfo.operatingSystemVersionString,
         ]
     }
 }
