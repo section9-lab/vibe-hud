@@ -29,6 +29,15 @@ enum UpdateState: Equatable {
             return true
         }
     }
+
+    var isInteractive: Bool {
+        switch self {
+        case .idle, .upToDate, .found, .readyToInstall, .error:
+            return true
+        case .checking, .downloading, .extracting, .installing:
+            return false
+        }
+    }
 }
 
 /// Observable update manager that bridges Sparkle to SwiftUI
@@ -54,6 +63,17 @@ class UpdateManager: NSObject, ObservableObject {
     }
 
     // MARK: - Public API
+
+    func performPrimaryAction() {
+        switch state {
+        case .idle, .upToDate, .error:
+            checkForUpdates()
+        case .found, .readyToInstall:
+            installUpdate()
+        case .checking, .downloading, .extracting, .installing:
+            break
+        }
+    }
 
     func checkForUpdates() {
         guard !state.isActive else { return }

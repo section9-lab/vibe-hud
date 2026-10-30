@@ -316,7 +316,7 @@ struct NotchView: View {
 
     @ViewBuilder
     private var openedHeaderContent: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: viewModel.spacing) {
             // Fall back to the primary source icon if persistent activity is disabled.
             if !showClosedActivity {
                 SessionSourceIcon(source: primaryDisplayedSource, size: 14)
@@ -325,6 +325,9 @@ struct NotchView: View {
             }
 
             Spacer()
+
+            NotchUpdateButton(updateManager: updateManager)
+                .frame(maxWidth: updateButtonMaxWidth)
 
             // Menu toggle
             Button {
@@ -335,24 +338,23 @@ struct NotchView: View {
                     }
                 }
             } label: {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: viewModel.contentType == .menu ? "xmark" : "line.3.horizontal")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.4))
-                        .frame(width: 22, height: 22)
-                        .contentShape(Rectangle())
-
-                    // Green dot for unseen update
-                    if updateManager.hasUnseenUpdate && viewModel.contentType != .menu {
-                        Circle()
-                            .fill(TerminalColors.green)
-                            .frame(width: 6, height: 6)
-                            .offset(x: -2, y: 2)
-                    }
-                }
+                Image(systemName: viewModel.contentType == .menu ? "xmark" : "line.3.horizontal")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.4))
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(viewModel.contentType == .menu ? "Close Settings" : "Settings")
         }
+    }
+
+    /// Keep header actions in the visible area to the right of the camera housing.
+    private var updateButtonMaxWidth: CGFloat? {
+        guard viewModel.hasPhysicalNotch else { return nil }
+        let rightWingWidth = (notchSize.width - closedNotchSize.width) / 2
+        let menuButtonWidth: CGFloat = 22
+        return max(0, rightWingWidth - menuButtonWidth - viewModel.spacing)
     }
 
     // MARK: - Content View (Opened State)

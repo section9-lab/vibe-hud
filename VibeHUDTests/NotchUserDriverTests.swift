@@ -22,8 +22,8 @@ struct NotchUserDriverTests {
         }
         #expect(downloadReplies == 0)
 
-        manager.installUpdate()
-        manager.installUpdate()
+        manager.performPrimaryAction()
+        manager.performPrimaryAction()
         #expect(downloadReplies == 1)
         #expect(manager.state == .downloading(progress: 0))
         #expect(!manager.hasUnseenUpdate)
@@ -39,7 +39,7 @@ struct NotchUserDriverTests {
             #expect(manager.state == .installing)
         }
 
-        manager.installUpdate()
+        manager.performPrimaryAction()
         #expect(manager.state == .installing)
         #expect(downloadReplies == 1)
         #expect(installationReplies == 1)
@@ -73,8 +73,8 @@ struct NotchUserDriverTests {
         }
         #expect(replies == 0)
 
-        manager.installUpdate()
-        manager.installUpdate()
+        manager.performPrimaryAction()
+        manager.performPrimaryAction()
         #expect(manager.state == .installing)
         #expect(replies == 1)
     }

@@ -233,7 +233,7 @@ struct UpdateRow: View {
 
     var body: some View {
         Button {
-            handleTap()
+            updateManager.performPrimaryAction()
         } label: {
             HStack(spacing: 10) {
                 // Icon
@@ -436,25 +436,7 @@ struct UpdateRow: View {
     }
 
     private var isInteractive: Bool {
-        switch updateManager.state {
-        case .idle, .upToDate, .found, .readyToInstall, .error:
-            return true
-        case .checking, .downloading, .extracting, .installing:
-            return false
-        }
-    }
-
-    // MARK: - Actions
-
-    private func handleTap() {
-        switch updateManager.state {
-        case .idle, .upToDate, .error:
-            updateManager.checkForUpdates()
-        case .found, .readyToInstall:
-            updateManager.installUpdate()
-        default:
-            break
-        }
+        updateManager.state.isInteractive
     }
 }
 
