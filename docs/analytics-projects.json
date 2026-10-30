@@ -13,7 +13,9 @@
       "token": "bdddca11c86696f63f1073b5c525851d",
       "artifact_suffixes": [
         ".dmg"
-      ]
+      ],
+      "workspace_id": 4575599,
+      "board_id": 11621347
     },
     {
       "app_id": "pi-work",
@@ -23,7 +25,9 @@
       "token": "87b4e3d8fe56ac234f3f4f2859a764ff",
       "artifact_suffixes": [
         ".dmg"
-      ]
+      ],
+      "workspace_id": 4575584,
+      "board_id": 11621274
     },
     {
       "app_id": "myclip",
@@ -33,7 +37,9 @@
       "token": "3e3007b5a0d565270089d54cb3088501",
       "artifact_suffixes": [
         ".dmg"
-      ]
+      ],
+      "workspace_id": 4575597,
+      "board_id": 11621338
     }
   ]
 }

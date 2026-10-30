@@ -1,6 +1,6 @@
 # Independent app analytics
 
-vibe hud belongs to the **minicode** organization and sends new data exclusively to its own Mixpanel project, **vibe hud (4078940)**, in the US region. The public ingestion token and project ID are configured in Info.plist. No API secret is bundled. The previous shared project **minicode (4078569)** is retained as historical data; switching the token does not automatically move old events.
+vibe hud belongs to the **minicode** organization and sends new data exclusively to its own Mixpanel project, **vibe hud (4078940)**, in the US region. The public ingestion token and project ID are configured in Info.plist. No API secret is bundled. The previous shared project **minicode (4078569)** is retained as historical data; switching the token does not automatically move old events. On 2026-10-30, a one-time JSON export copied the existing production launch/activity events into their matching app projects, preserving timestamps, device identities, and insert IDs. Development events were excluded; original records remain in the legacy project. Older installed versions continue to report there until upgraded.
 
 The official Mixpanel Swift SDK remains pinned to `3ad0fb82216978c124b04accac6c9f9eaf848187`. No extra client dependency is needed for regional context.
 
@@ -40,9 +40,9 @@ The central collector in [vibe-hud](https://github.com/section9-lab/vibe-hud/blo
 
 The workflow samples daily. Increases describe the interval between samples, not exact midnight-to-midnight downloads; GitHub scheduled runs can be delayed. Cache loss or project changes establish a fresh baseline. A failed upload does not advance that app's baseline. Pending payloads and insert IDs are persisted before upload, so retries after an ambiguous acknowledgement reuse the original event instead of duplicating its delta. Aggregate events also disable IP enrichment to avoid attributing CI-server geography to users.
 
-## Dashboard plan
+## Saved dashboard
 
-Each app's project can use up to five saved report definitions on the current free plan:
+[Open this app's saved board](https://mixpanel.com/project/4078940/view/4575599/app/boards#id=11621347). All five reports are saved within this app's project, using the current free plan allowance:
 
 1. Daily active installations: unique `Daily Active`, daily interval, last 30 days.
 2. Active-installation summary: unique `Daily Active` over the selected window; switch between 7 and 30 days instead of summing daily users.
