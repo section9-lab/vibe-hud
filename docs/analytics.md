@@ -45,10 +45,12 @@ The workflow samples daily. Increases describe the interval between samples, not
 [Open this app's saved board](https://mixpanel.com/project/4078940/view/4575599/app/boards#id=11621347). All five reports are saved within this app's project, using the current free plan allowance:
 
 1. Daily active installations: unique `Daily Active`, daily interval, last 30 days.
-2. Active-installation summary: unique `Daily Active` over the selected window; switch between 7 and 30 days instead of summing daily users.
+2. Today's daily active installations by version: unique `Daily Active`, broken down by `app_version`, from the start of the current US/Pacific day. `app_version` and `build_number` are already attached to client events; no client update is required for this chart.
 3. Retention: first `Daily Active` to returning `Daily Active`, with daily cohorts.
 4. Device country/region setting: unique `Daily Active`, broken down by `device_region_country`.
 5. Downloads: snapshots of `download_total` plus summed `downloads_since_previous_snapshot`, clearly labeled as asset downloads.
+
+An installation can appear in multiple version rows when it upgrades during the selected day; do not sum those rows to obtain total DAU. `Daily Active` is emitted once per reporting day, so a same-day update may appear first in `App Launched`, and in `Daily Active` on the next active day. To check upgrade adoption, inspect the most recent version-bearing client event for each installation and compare it with the latest stable release. Historical old-version events alone do not establish that an installation is still out of date.
 
 Usage/retention/regional reports filter `environment = production`. Each independent project accepts its own app token; project isolation separates the apps. Download reports select the aggregate event explicitly, so its collector identity cannot inflate active-user or retention counts.
 
