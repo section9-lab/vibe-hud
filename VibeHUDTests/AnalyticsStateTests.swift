@@ -79,6 +79,65 @@ struct AnalyticsStateTests {
         }
     }
 
+
+    @Test
+    func isolatesReportingDestinations() {
+        withDefaults { defaults in
+            let state = makeState(defaults)
+            let now = date("2026-10-30T12:00:00Z")
+            #expect(state.claimActiveDay(at: now) != nil)
+            #expect(state.claimActiveDay(at: now, destination: "new-project") != nil)
+            #expect(state.claimActiveDay(at: now, destination: "new-project") == nil)
+            #expect(makeState(defaults).claimActiveDay(at: now, destination: "new-project") == nil)
+            #expect(state.claimActiveDay(at: now) == nil)
+        }
+    }
+
+    @Test
+    func regionUsesExplicitSetting() {
+        let context = AnalyticsRegionContext(
+            locale: Locale(identifier: "de_DE"), preferredLanguages: ["en-US"],
+            timeZone: TimeZone(identifier: "America/Toronto")!
+        )
+        #expect(context.countrySetting == "DE")
+        #expect(context.language == "en")
+        #expect(context.properties["region_source"] == "system_region_setting")
+        #expect(context.timeZoneIdentifier == "America/Toronto")
+    }
+
+    @Test
+    func ambiguousSettingsRemainUnknown() {
+        for identifier in ["en", "en_001", "und"] {
+            let context = AnalyticsRegionContext(
+                locale: Locale(identifier: identifier), preferredLanguages: ["en"],
+                timeZone: TimeZone(identifier: "America/Los_Angeles")!
+            )
+            #expect(context.countrySetting == "unknown")
+            #expect(context.properties["region_source"] == "unknown")
+        }
+    }
+
+    @Test
+    func languageDoesNotOverrideRegion() {
+        let context = AnalyticsRegionContext(
+            locale: Locale(identifier: "en_US"), preferredLanguages: ["zh-Hans-CN"],
+            timeZone: TimeZone(identifier: "Asia/Shanghai")!
+        )
+        #expect(context.countrySetting == "US")
+        #expect(context.language == "zh")
+    }
+
+    @Test
+    func regionalContextContainsOnlyCoarseSettings() {
+        let context = AnalyticsRegionContext(
+            locale: Locale(identifier: "fr_FR"), preferredLanguages: [], timeZone: .gmt
+        )
+        #expect(context.language == "fr")
+        #expect(Set(context.properties.keys) == Set([
+            "device_region_country", "device_language", "device_timezone", "region_source"
+        ]))
+    }
+
     private func makeState(_ defaults: UserDefaults, appID: String = "vibe-hud") -> AnalyticsState {
         AnalyticsState(
             defaults: defaults, appID: appID, timeZone: TimeZone(identifier: "America/Los_Angeles")!

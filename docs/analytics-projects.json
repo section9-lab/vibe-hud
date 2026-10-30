@@ -1,0 +1,39 @@
+{
+  "organization": "minicode",
+  "organization_id": 3130226,
+  "data_residency": "US",
+  "reporting_timezone": "America/Los_Angeles",
+  "legacy_project_id": 4078569,
+  "apps": [
+    {
+      "app_id": "vibe-hud",
+      "app_name": "vibe hud",
+      "repository": "section9-lab/vibe-hud",
+      "project_id": 4078940,
+      "token": "bdddca11c86696f63f1073b5c525851d",
+      "artifact_suffixes": [
+        ".dmg"
+      ]
+    },
+    {
+      "app_id": "pi-work",
+      "app_name": "pi-work",
+      "repository": "section9-lab/pi-work",
+      "project_id": 4078925,
+      "token": "87b4e3d8fe56ac234f3f4f2859a764ff",
+      "artifact_suffixes": [
+        ".dmg"
+      ]
+    },
+    {
+      "app_id": "myclip",
+      "app_name": "MyClip",
+      "repository": "section9-lab/MyClip",
+      "project_id": 4078938,
+      "token": "3e3007b5a0d565270089d54cb3088501",
+      "artifact_suffixes": [
+        ".dmg"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+name: App download analytics
+
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-download-analytics
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check snapshot counting and recovery
+        run: python3 -m unittest tests/test_download_analytics.py -v
+      - name: Restore the last acknowledged download baselines
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/download-analytics
+          key: app-downloads-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: app-downloads-v1-
+      - name: Collect public release-asset download counts
+        run: python3 scripts/sync-download-analytics.py --state "$RUNNER_TEMP/download-analytics/state.json"
+      - name: Preserve acknowledged apps even when another app fails
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/download-analytics
+          key: app-downloads-v1-${{ github.run_id }}-${{ github.run_attempt }}

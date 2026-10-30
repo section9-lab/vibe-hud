@@ -17,9 +17,11 @@
     <key>NSHumanReadableCopyright</key>
     <string>Copyright 2025. All rights reserved.</string>
 
-    <!-- Public ingestion token for the owner's shared app analytics project. -->
+    <!-- Public ingestion token for this app's independent analytics project. -->
+    <key>MixpanelProjectID</key>
+    <string>4078940</string>
     <key>MixpanelProjectToken</key>
-    <string>faed71b6d9a819c812dd44244e836143</string>
+    <string>bdddca11c86696f63f1073b5c525851d</string>
 
     <!-- Sparkle Update Configuration -->
     <key>SUPublicEDKey</key>

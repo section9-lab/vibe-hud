@@ -13,6 +13,10 @@ final class AppAnalytics: ObservableObject {
         private static let environment = "production"
     #endif
 
+    private static var reportingDestination: String {
+        Bundle.main.object(forInfoDictionaryKey: "MixpanelProjectID") as? String ?? "legacy"
+    }
+
     @Published private(set) var isEnabled: Bool
     private let state: AnalyticsState
     private var client: MixpanelInstance?
@@ -36,7 +40,7 @@ final class AppAnalytics: ObservableObject {
         let installationID = "\(Self.appID):\(state.installationID)"
         let options = MixpanelOptions(
             token: token,
-            instanceName: "\(Self.appID)-\(Self.environment)-usage-v1",
+            instanceName: "\(Self.appID)-\(Self.environment)-usage-\(Self.reportingDestination)",
             trackAutomaticEvents: false,
             useUniqueDistinctId: false,
             superProperties: commonProperties,
@@ -57,7 +61,11 @@ final class AppAnalytics: ObservableObject {
 
     /// Called for actual HUD interactions, never for background agent events.
     func recordActivity(at date: Date = Date()) {
-        guard isEnabled, let client, let day = state.claimActiveDay(at: date) else { return }
+        guard isEnabled, let client,
+            let day = state.claimActiveDay(at: date, destination: Self.reportingDestination)
+        else { return }
+        // Refresh regional hints when settings change while the app remains open.
+        client.registerSuperProperties(commonProperties)
         client.track(event: "Daily Active", properties: ["activity_date": day])
         client.flush()
     }
@@ -87,7 +95,11 @@ final class AppAnalytics: ObservableObject {
     }
 
     private var commonProperties: Properties {
-        return [
+        var properties: Properties = [:]
+        for (key, value) in AnalyticsRegionContext().properties {
+            properties[key] = value
+        }
+        let appProperties: Properties = [
             "app_id": Self.appID,
             "app_name": "vibe hud",
             "app_version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
@@ -98,5 +110,6 @@ final class AppAnalytics: ObservableObject {
             "environment": Self.environment,
             "macos_version": Foundation.ProcessInfo.processInfo.operatingSystemVersionString,
         ]
+        return properties.merging(appProperties) { _, appValue in appValue }
     }
 }

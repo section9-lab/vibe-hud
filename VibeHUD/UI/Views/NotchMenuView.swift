@@ -142,6 +142,7 @@ struct NotchMenuView: View {
                 ) {
                     analytics.setEnabled(!analytics.isEnabled)
                 }
+                .help("Shares app usage, versions, language, system region and time zone. No session content or precise location.")
 
                 UpdateRow(updateManager: updateManager)
 

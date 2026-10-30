@@ -118,7 +118,7 @@ Older builds without an update public key may need a one-time manual reinstall t
 
 ## Privacy
 
-The app reads local session events and conversation history to display the HUD. Anonymous Mixpanel analytics record app launches and the first actual HUD interaction on each reporting day, using a random installation identifier, app ID, app/build versions, and macOS version. Background agent activity does not count as HUD usage. Analytics do not include conversation text, agent session identifiers, project paths, commands, hardware UUIDs, or Claude Code versions; IP-based geolocation is disabled. Turn off **Share Anonymous Usage** in the notch menu to stop analytics. See the [privacy page](https://hud.vibevibe.cc/privacy/) for details.
+The app reads local session events and conversation history to display the HUD. Anonymous Mixpanel analytics record app launches and the first actual HUD interaction on each reporting day, using a random installation identifier, app ID, app/build versions, macOS version, preferred language, system country/region setting, and timezone. Regional settings are not verified physical location. Background agent activity does not count as HUD usage. Analytics do not include conversation text, agent session identifiers, project paths, commands, hardware UUIDs, or Claude Code versions; IP-based geolocation is disabled. Turn off **Share Anonymous Usage** in the notch menu to stop analytics. See the [privacy page](https://hud.vibevibe.cc/privacy/) for details.
 
 ### Shared app analytics
 
