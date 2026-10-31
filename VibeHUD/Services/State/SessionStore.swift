@@ -157,6 +157,14 @@ actor SessionStore {
         }
         var session = sessions[sessionId] ?? createSession(from: event)
 
+        if event.event == "WorkBuddyRecovery", let existing = sessions[sessionId] {
+            // Discovery without evidence must not overwrite a live hook. Transcript
+            // recovery is lower priority than hooks and only applies newer evidence.
+            guard let timestamp = event.eventTimestamp,
+                  WorkBuddyTranscriptState(status: event.status, timestamp: timestamp)
+                    .isNewer(than: existing.lastEventTimestamp) else { return }
+        }
+
         guard hookEventSequence.shouldAccept(
             source: event.source,
             sessionId: sessionId,
@@ -169,6 +177,8 @@ actor SessionStore {
         }
         if let eventTimestamp = event.eventTimestamp {
             session.lastEventTimestamp = eventTimestamp
+        } else if event.source == "workbuddy", event.event != "WorkBuddyRecovery" {
+            session.lastEventTimestamp = Date().timeIntervalSince1970
         }
 
         session.pid = event.pid ?? session.pid
@@ -201,7 +211,10 @@ actor SessionStore {
         if let tmuxSocket = event.tmuxSocket, !tmuxSocket.isEmpty {
             session.tmuxSocketPath = tmuxSocket
         }
-        session.lastActivity = Date()
+        session.hasReliableStatus = event.status != "unknown"
+        session.lastActivity = event.event == "WorkBuddyRecovery"
+            ? event.eventTimestamp.map { Date(timeIntervalSince1970: $0) } ?? Date()
+            : Date()
 
         if event.status == "ended" {
             sessions.removeValue(forKey: sessionId)
@@ -649,6 +662,18 @@ actor SessionStore {
 
         guard var session = sessions[payload.sessionId] else { return }
         session.conversationInfo = conversationInfo
+        // Hooks are the fast path; transcript changes repair missed events, including
+        // sessions that have no runtime discovery record. Never infer completion
+        // merely because an individual tool finished.
+        if session.source == .workbuddy,
+           let path = payload.transcriptPath ?? session.transcriptPath,
+           let recovered = WorkBuddyTranscriptState.read(at: URL(fileURLWithPath: path)),
+           recovered.isNewer(than: session.lastEventTimestamp) {
+            session.phase = recovered.status == "waiting_for_input" ? .waitingForInput : .processing
+            session.hasReliableStatus = true
+            session.lastEventTimestamp = recovered.timestamp
+            session.lastActivity = Date(timeIntervalSince1970: recovered.timestamp)
+        }
 
         // Handle /clear reconciliation - remove items that no longer exist in parser state
         if session.needsClearReconciliation {

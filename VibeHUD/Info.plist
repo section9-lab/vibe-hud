@@ -32,5 +32,10 @@
     <true/>
     <key>SUScheduledCheckInterval</key>
     <integer>3600</integer>
+    <!-- Discover silently, but never download or restart before the user clicks. -->
+    <key>SUAutomaticallyUpdate</key>
+    <false/>
+    <key>SUAllowsAutomaticUpdates</key>
+    <false/>
 </dict>
 </plist>

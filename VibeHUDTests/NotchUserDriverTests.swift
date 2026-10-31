@@ -11,6 +11,51 @@ struct NotchUserDriverTests {
         _ = NotchUserDriver()
     }
 
+    @Test("Background discovery only advertises the update until the user clicks")
+    func discoveryDoesNotDownloadWithoutConsent() {
+        let manager = UpdateManager()
+        #expect(!manager.showsNotchIndicator)
+        manager.state = .checking
+        #expect(!manager.showsNotchIndicator)
+        var replies = 0
+        manager.updateFound(version: "2.0", releaseNotes: nil) { _ in replies += 1 }
+        #expect(manager.hasAvailableUpdate)
+        #expect(manager.showsNotchIndicator)
+        #expect(replies == 0)
+        manager.markUpdateSeen()
+        #expect(manager.showsNotchIndicator)
+        #expect(replies == 0)
+    }
+
+    @Test("Routine check failures do not advertise an update, but download failures remain retryable")
+    func onlyKnownUpdateFailuresShowIndicator() {
+        let manager = UpdateManager()
+        manager.updateError("Offline")
+        #expect(!manager.showsNotchIndicator)
+        manager.updateFound(version: "2.0", releaseNotes: nil) { _ in }
+        manager.installUpdate()
+        manager.updateError("Download interrupted")
+        #expect(manager.showsNotchIndicator)
+        #expect(manager.state.isInteractive)
+        manager.noUpdateFound()
+        #expect(!manager.hasAvailableUpdate)
+        #expect(!manager.showsNotchIndicator)
+    }
+
+    @Test("Completing or skipping an update removes the indicator", arguments: [true, false])
+    func completionClearsIndicator(installed: Bool) {
+        let manager = UpdateManager()
+        manager.updateFound(version: "2.0", releaseNotes: nil) { _ in }
+        if installed {
+            manager.installed(relaunched: true)
+        } else {
+            manager.skipUpdate()
+        }
+        #expect(!manager.showsNotchIndicator)
+        #expect(!manager.hasAvailableUpdate)
+        #expect(!manager.hasUnseenUpdate)
+    }
+
     @Test("One click downloads and installs using the new ready callback without a second click")
     func singleClickContinuesThroughInstallation() {
         let manager = UpdateManager()

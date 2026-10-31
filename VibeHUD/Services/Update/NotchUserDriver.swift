@@ -47,7 +47,21 @@ class UpdateManager: NSObject, ObservableObject {
 
     @Published var state: UpdateState = .idle
     @Published var hasUnseenUpdate: Bool = false
+    @Published private(set) var hasAvailableUpdate = false
     private var hasSeenUpdateThisSession: Bool = false
+
+    /// Routine checks stay silent. An error is only shown here if an update
+    /// was already offered; network failures alone must not advertise an update.
+    var showsNotchIndicator: Bool {
+        switch state {
+        case .found, .downloading, .extracting, .readyToInstall, .installing:
+            return true
+        case .error:
+            return hasAvailableUpdate
+        case .idle, .checking, .upToDate:
+            return false
+        }
+    }
 
     private var downloadedBytes: Int64 = 0
     private var expectedBytes: Int64 = 0
@@ -110,6 +124,8 @@ class UpdateManager: NSObject, ObservableObject {
         let handler = installHandler
         resetInstallation()
         state = .idle
+        hasAvailableUpdate = false
+        hasUnseenUpdate = false
         handler?(.skip)
     }
 
@@ -117,6 +133,8 @@ class UpdateManager: NSObject, ObservableObject {
         let handler = installHandler
         resetInstallation()
         state = .idle
+        hasAvailableUpdate = false
+        hasUnseenUpdate = false
         handler?(.dismiss)
     }
 
@@ -132,6 +150,7 @@ class UpdateManager: NSObject, ObservableObject {
     func updateFound(version: String, releaseNotes: String?, installHandler: @escaping (SPUUserUpdateChoice) -> Void) {
         resetInstallation()
         self.currentVersion = version
+        self.hasAvailableUpdate = true
         self.installHandler = installHandler
         self.state = .found(version: version, releaseNotes: releaseNotes)
         // Only show the dot if user hasn't seen it this session
@@ -172,6 +191,7 @@ class UpdateManager: NSObject, ObservableObject {
     }
 
     func readyToInstall(installHandler: @escaping (SPUUserUpdateChoice) -> Void) {
+        hasAvailableUpdate = true
         if installWhenReady {
             // The user already selected Update & Restart before downloading.
             // Continue using the fresh installation reply without another prompt.
@@ -190,11 +210,15 @@ class UpdateManager: NSObject, ObservableObject {
 
     func installed(relaunched: Bool) {
         resetInstallation()
+        hasAvailableUpdate = false
+        hasUnseenUpdate = false
         self.state = .idle
     }
 
     func noUpdateFound() {
         resetInstallation()
+        hasAvailableUpdate = false
+        hasUnseenUpdate = false
         self.state = .upToDate
         // Reset to idle after a few seconds
         Task {

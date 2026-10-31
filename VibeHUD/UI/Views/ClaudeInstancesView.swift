@@ -174,11 +174,12 @@ struct InstanceRow: View {
         return toolName == "AskUserQuestion"
     }
 
-    /// Status text based on session phase (fallback when no other content)
+    /// Always show the current status independently of historical activity.
     private var phaseStatusText: String {
+        guard session.hasReliableStatus else { return "Syncing…" }
         switch session.phase {
         case .processing:
-            return "Processing..."
+            return "Running"
         case .compacting:
             return "Compacting..."
         case .waitingForInput:
@@ -192,6 +193,28 @@ struct InstanceRow: View {
         case .ended:
             return "Ended"
         }
+    }
+
+    private var activityDescription: String {
+        guard session.hasReliableStatus else { return "Waiting for session events" }
+        if isWaitingForApproval, let tool = session.pendingToolName {
+            let detail = isInteractiveTool ? "Needs your input" : session.pendingToolInput
+            return [MCPToolFormatter.formatToolName(tool), detail].compactMap { $0 }.joined(separator: " · ")
+        }
+        if session.lastToolName == "TaskOutput" {
+            return session.phase.isActive ? "Background task output" : "Last: Background task output"
+        }
+        let activity: String
+        if session.lastMessageRole == "tool" {
+            activity = [session.lastToolName.map(MCPToolFormatter.formatToolName), session.lastMessage]
+                .compactMap { $0 }.joined(separator: " ")
+        } else if session.lastMessageRole == "user", let message = session.lastMessage {
+            activity = "You: \(message)"
+        } else {
+            activity = session.lastMessage ?? ""
+        }
+        guard !activity.isEmpty else { return "No recent activity" }
+        return session.phase.isActive ? activity : "Last: \(activity)"
     }
 
     var body: some View {
@@ -210,6 +233,14 @@ struct InstanceRow: View {
                         .foregroundColor(.white)
                         .lineLimit(1)
 
+                    Spacer(minLength: 4)
+
+                    Text(phaseStatusText)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(session.phase.isActive ? TerminalColors.green : .white.opacity(0.55))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+
                     // Token usage indicator
                     if session.usage.totalTokens > 0 {
                         Text(session.usage.formattedTotal)
@@ -218,76 +249,19 @@ struct InstanceRow: View {
                     }
                 }
 
-                // Show tool call when waiting for approval, otherwise last activity
-                if isWaitingForApproval, let toolName = session.pendingToolName {
-                    // Show tool name in amber + input on same line
-                    HStack(spacing: 4) {
-                        Text(MCPToolFormatter.formatToolName(toolName))
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundColor(TerminalColors.amber.opacity(0.9))
-                        if isInteractiveTool {
-                            Text("Needs your input")
-                                .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.5))
-                                .lineLimit(1)
-                        } else if let input = session.pendingToolInput {
-                            Text(input)
-                                .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.5))
-                                .lineLimit(1)
-                        }
-                    }
-                } else if let role = session.lastMessageRole {
-                    switch role {
-                    case "tool":
-                        // Tool call - show tool name + input
-                        HStack(spacing: 4) {
-                            if let toolName = session.lastToolName {
-                                Text(MCPToolFormatter.formatToolName(toolName))
-                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            if let input = session.lastMessage {
-                                Text(input)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.4))
-                                    .lineLimit(1)
-                            }
-                        }
-                    case "user":
-                        // User message - prefix with "You:"
-                        HStack(spacing: 4) {
-                            Text("You:")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.white.opacity(0.5))
-                            if let msg = session.lastMessage {
-                                Text(msg)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.4))
-                                    .lineLimit(1)
-                            }
-                        }
-                    default:
-                        // Assistant message - just show text
-                        if let msg = session.lastMessage {
-                            Text(msg)
-                                .font(.system(size: 11))
-                                .foregroundColor(.white.opacity(0.4))
-                                .lineLimit(1)
-                        }
-                    }
-                } else if let lastMsg = session.lastMessage {
-                    Text(lastMsg)
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.4))
+                HStack(spacing: 4) {
+                    Text(session.projectName)
                         .lineLimit(1)
-                } else {
-                    // Fallback: show phase-based status when no other content
-                    Text(phaseStatusText)
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.4))
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 100, alignment: .leading)
+                        .fixedSize(horizontal: true, vertical: false)
+                    Text("·")
+                    Text(activityDescription)
+                        .foregroundColor(isWaitingForApproval ? TerminalColors.amber.opacity(0.9) : .white.opacity(0.4))
                         .lineLimit(1)
                 }
+                .font(.system(size: 11))
+                .foregroundColor(.white.opacity(0.4))
             }
 
             Spacer(minLength: 0)

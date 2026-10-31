@@ -58,6 +58,7 @@ final class WorkBuddySessionMonitor: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.vibehud.workbuddy-monitor")
     private var timer: DispatchSourceTimer?
     private var trackedSessions: [String: WorkBuddySessionRecord] = [:]
+    private var transcriptStates: [String: WorkBuddyTranscriptState] = [:]
     private var eventHandler: HookEventHandler?
 
     private init() {}
@@ -99,15 +100,24 @@ final class WorkBuddySessionMonitor: @unchecked Sendable {
         let started = nextSessions.keys.filter { trackedSessions[$0] == nil }.sorted()
         let stopped = trackedSessions.keys.filter { nextSessions[$0] == nil }.sorted()
 
-        for sessionId in started {
-            if let session = nextSessions[sessionId] {
-                eventHandler?(Self.hookEvent(for: session, status: "waiting_for_input"))
+        for session in sessions {
+            let transcript = WorkBuddyPaths.transcriptFile(sessionId: session.sessionId, cwd: session.cwd)
+            let state = transcript.flatMap { WorkBuddyTranscriptState.read(at: $0) }
+            if started.contains(session.sessionId) || (state != nil && transcriptStates[session.sessionId] != state) {
+                eventHandler?(Self.hookEvent(
+                    for: session,
+                    status: state?.status ?? "unknown",
+                    transcriptPath: transcript?.path,
+                    timestamp: state?.timestamp
+                ))
             }
+            transcriptStates[session.sessionId] = state
         }
         for sessionId in stopped {
             if let session = trackedSessions[sessionId] {
                 eventHandler?(Self.hookEvent(for: session, status: "ended"))
             }
+            transcriptStates.removeValue(forKey: sessionId)
         }
 
         trackedSessions = nextSessions
@@ -118,21 +128,24 @@ final class WorkBuddySessionMonitor: @unchecked Sendable {
             eventHandler?(Self.hookEvent(for: session, status: "ended"))
         }
         trackedSessions.removeAll()
+        transcriptStates.removeAll()
     }
 
     nonisolated private static func hookEvent(
         for session: WorkBuddySessionRecord,
-        status: String
+        status: String,
+        transcriptPath: String? = nil,
+        timestamp: TimeInterval? = nil
     ) -> HookEvent {
         HookEvent(
             sessionId: session.sessionId,
             cwd: session.cwd,
-            event: status == "ended" ? "SessionEnd" : "SessionStart",
+            event: status == "ended" ? "SessionEnd" : "WorkBuddyRecovery",
             status: status,
             source: "workbuddy",
             pid: session.pid,
             tty: nil,
-            transcriptPath: nil,
+            transcriptPath: transcriptPath,
             terminalBundleId: "com.workbuddy.workbuddy",
             terminalPid: nil,
             tmuxPane: nil,
@@ -141,7 +154,8 @@ final class WorkBuddySessionMonitor: @unchecked Sendable {
             toolInput: nil,
             toolUseId: nil,
             notificationType: nil,
-            message: nil
+            message: nil,
+            eventTimestamp: timestamp
         )
     }
 }

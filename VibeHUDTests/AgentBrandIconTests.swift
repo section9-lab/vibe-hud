@@ -14,6 +14,7 @@ struct AgentBrandIconTests {
             (SessionSource.copilot, "AgentGitHubCopilot"),
             (SessionSource.pi, "AgentPi"),
             (SessionSource.opencode, "AgentOpenCode"),
+            (SessionSource.workbuddy, "AgentWorkBuddy"),
         ]
     )
     func mapsPackagedAssets(source: SessionSource, assetName: String) {
@@ -21,14 +22,10 @@ struct AgentBrandIconTests {
         #expect(NSImage(named: assetName) != nil)
     }
 
-    @Test("Loads WorkBuddy from its official installed application")
-    func mapsWorkBuddyApplication() {
-        #expect(SessionSource.workbuddy.brandAssetName == nil)
-        #expect(SessionSource.workbuddy.brandApplicationBundleIdentifier == "com.workbuddy.workbuddy")
-        #expect(
-            SessionSource.workbuddy.brandMonochromeApplicationIconRelativePath
-                == "Contents/Resources/app.asar.unpacked/resources/trayTemplate@2x.png"
-        )
+    @Test("WorkBuddy uses a packaged silhouette, not a filled app tile, in monochrome")
+    func mapsWorkBuddyMonochromeAsset() {
+        #expect(SessionSource.workbuddy.brandMonochromeAssetName == "AgentWorkBuddyMono")
+        #expect(NSImage(named: "AgentWorkBuddyMono") != nil)
     }
 
     @Test("Renders the GPT mark instead of a filled tile in settings")

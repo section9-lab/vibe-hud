@@ -326,8 +326,10 @@ struct NotchView: View {
 
             Spacer()
 
-            NotchUpdateButton(updateManager: updateManager)
-                .frame(maxWidth: updateButtonMaxWidth)
+            if updateManager.showsNotchIndicator {
+                NotchUpdateButton(updateManager: updateManager)
+                    .frame(maxWidth: updateButtonMaxWidth)
+            }
 
             // Menu toggle
             Button {

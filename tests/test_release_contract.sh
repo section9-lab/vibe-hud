@@ -39,8 +39,13 @@ import plistlib
 import sys
 
 with open(sys.argv[1], "rb") as file:
-    key = plistlib.load(file).get("SUPublicEDKey", "")
+    config = plistlib.load(file)
+    key = config.get("SUPublicEDKey", "")
 assert len(base64.b64decode(key, validate=True)) == 32, "The app must embed its Sparkle Ed25519 public key"
+assert config.get("SUEnableAutomaticChecks") is True, "Updates must be discovered automatically"
+assert config.get("SUScheduledCheckInterval") == 3600, "Check for updates hourly"
+assert config.get("SUAutomaticallyUpdate") is False, "Do not download before the user clicks"
+assert config.get("SUAllowsAutomaticUpdates") is False, "Saved Sparkle preferences must not bypass click-to-update consent"
 PY
 
 if [ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$plist")" != "https://github.com/section9-lab/vibe-hud/releases/latest/download/appcast.xml" ]; then

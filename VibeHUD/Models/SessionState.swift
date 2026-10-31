@@ -92,18 +92,12 @@ enum SessionSource: String, Codable, Equatable, Hashable, Sendable {
         case .copilot: "AgentGitHubCopilot"
         case .pi: "AgentPi"
         case .opencode: "AgentOpenCode"
-        case .workbuddy: nil
+        case .workbuddy: "AgentWorkBuddy"
         }
     }
 
-    nonisolated var brandApplicationBundleIdentifier: String? {
-        self == .workbuddy ? "com.workbuddy.workbuddy" : nil
-    }
-
-    nonisolated var brandMonochromeApplicationIconRelativePath: String? {
-        self == .workbuddy
-            ? "Contents/Resources/app.asar.unpacked/resources/trayTemplate@2x.png"
-            : nil
+    nonisolated var brandMonochromeAssetName: String? {
+        self == .workbuddy ? "AgentWorkBuddyMono" : brandAssetName
     }
 }
 
@@ -132,6 +126,8 @@ struct SessionState: Equatable, Identifiable, Sendable {
 
     /// Current phase in the session lifecycle
     var phase: SessionPhase
+    /// Discovery alone cannot tell whether a WorkBuddy turn is running or ready.
+    var hasReliableStatus = true
 
     // MARK: - Chat History
 
