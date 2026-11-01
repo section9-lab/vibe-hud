@@ -23,6 +23,7 @@ struct ChatView: View {
     @State private var newMessageCount: Int = 0
     @State private var previousHistoryCount: Int = 0
     @State private var isBottomVisible: Bool = true
+    @State private var visibleHistoryLimit: Int = ChatHistoryWindow.initialLimit
 
     init(sessionId: String, initialSession: SessionState, sessionMonitor: ClaudeSessionMonitor, viewModel: NotchViewModel) {
         self.sessionId = sessionId
@@ -241,10 +242,18 @@ struct ChatView: View {
     /// Background color for fade gradients
     private let fadeColor = Color(red: 0.00, green: 0.00, blue: 0.00)
 
+    private var visibleHistory: ArraySlice<ChatHistoryItem> {
+        ChatHistoryWindow.visibleItems(in: history, limit: visibleHistoryLimit)
+    }
+
+    private var hiddenHistoryCount: Int {
+        max(0, history.count - visibleHistory.count)
+    }
+
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 16) {
+                LazyVStack(spacing: 16) {
                     // Invisible anchor at bottom (first due to flip)
                     Color.clear
                         .frame(height: 1)
@@ -261,14 +270,30 @@ struct ChatView: View {
                             ))
                     }
 
-                    ForEach(history.reversed()) { item in
+                    ForEach(visibleHistory.reversed()) { item in
                         MessageItemView(item: item, sessionId: sessionId)
                             .padding(.horizontal, 16)
                             .scaleEffect(x: 1, y: -1)
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.98)),
-                                removal: .opacity
-                            ))
+                    }
+
+                    if hiddenHistoryCount > 0 {
+                        Button {
+                            visibleHistoryLimit = ChatHistoryWindow.expandedLimit(
+                                current: visibleHistoryLimit,
+                                total: history.count
+                            )
+                        } label: {
+                            Text("Load \(min(ChatHistoryWindow.batchSize, hiddenHistoryCount)) earlier messages")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.white.opacity(0.55))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(
+                                    Capsule().fill(Color.white.opacity(0.08))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .scaleEffect(x: 1, y: -1)
                     }
                 }
                 .padding(.top, 20)
