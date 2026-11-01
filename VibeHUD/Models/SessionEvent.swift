@@ -134,7 +134,27 @@ extension HookEvent {
             WorkBuddySessionDirectory.isUserSession(sessionId: sessionId, cwd: cwd)
     }
 
-    /// Determine the target session phase based on this hook event
+    /// Informational notifications and unknown adapter events carry no lifecycle
+    /// evidence. They must not reset a running turn or advance its phase clock.
+    nonisolated var updatesSessionPhase: Bool {
+        if event == "PreCompact" || expectsResponse || isReadyNotification {
+            return true
+        }
+        switch status {
+        case "waiting_for_approval", "waiting_for_input",
+             "completed", "complete", "done", "success", "idle", "ready", "settled",
+             "running_tool", "processing", "starting", "compacting", "failed", "ended":
+            return true
+        default:
+            return false
+        }
+    }
+
+    nonisolated private var isReadyNotification: Bool {
+        event == "Notification" && ["idle_prompt", "agent_needs_input", "agent_completed"].contains(notificationType ?? "")
+    }
+
+    /// Determine the target session phase after checking updatesSessionPhase.
     nonisolated func determinePhase() -> SessionPhase {
         // PreCompact takes priority
         if event == "PreCompact" {
@@ -151,7 +171,7 @@ extension HookEvent {
             ))
         }
 
-        if event == "Notification" && notificationType == "idle_prompt" {
+        if isReadyNotification {
             return .waitingForInput
         }
 

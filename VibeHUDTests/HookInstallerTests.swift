@@ -132,8 +132,14 @@ struct HookInstallerTests {
         }
         #expect(commands == [
             "echo keep-me",
-            "python3 '/tmp/vibe-hud-state.py' --source workbuddy",
+            "python3 '/tmp/vibe-hud-state.py' --source workbuddy --event SessionStart",
         ])
+        for event in HookInstaller.workBuddyEvents {
+            let groups = try #require(hooks[event] as? [[String: Any]])
+            let managed = try #require(groups.last?["hooks"] as? [[String: Any]])
+            #expect(managed.first?["command"] as? String
+                == "python3 '/tmp/vibe-hud-state.py' --source workbuddy --event \(event)")
+        }
     }
 }
 

@@ -9,7 +9,8 @@ struct WorkBuddySessionRecord: Equatable, Sendable {
 
 enum WorkBuddySessionDirectory {
     nonisolated static func isUserSession(sessionId: String, cwd: String) -> Bool {
-        !sessionId.lowercased().hasPrefix("prewarm-") &&
+        let id = sessionId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return !id.isEmpty && id != "unknown" && !id.hasPrefix("prewarm-") &&
             !URL(fileURLWithPath: cwd).lastPathComponent.hasPrefix("__workbuddy_cli_host__-")
     }
 

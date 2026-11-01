@@ -134,12 +134,84 @@ struct WorkBuddyStateRecoveryTests {
         #expect(await store.session(for: "first")?.lastEventTimestamp == 1760000001)
     }
 
-    private func hook(id: String, status: String, timestamp: TimeInterval? = nil) -> HookEvent {
+    @Test("Informational events preserve both the phase and its evidence clock",
+          arguments: ["notification", "unknown", "future-adapter-status"])
+    func informationalEventsCannotResetPhase(status: String) async {
+        let context = PermissionContext(toolUseId: "tool", toolName: "Bash", toolInput: nil, receivedAt: Date())
+        for phase in [SessionPhase.processing, .compacting, .waitingForInput, .waitingForApproval(context), .failed("Error")] {
+            let session = SessionState(
+                sessionId: "first", cwd: "/tmp/project", source: .workbuddy,
+                phase: phase, lastEventTimestamp: 100
+            )
+            let store = SessionStore(initialSessions: [session])
+            await store.process(.hookReceived(hook(
+                id: "first", status: status, timestamp: 200, event: "Notification"
+            )))
+            #expect(await store.session(for: "first")?.phase == phase)
+            #expect(await store.session(for: "first")?.lastEventTimestamp == 100)
+            #expect(await store.session(for: "first")?.hasReliableStatus == true)
+        }
+    }
+
+    @Test("Two long-running tools remain active without new transcript records after a notification")
+    func longRunningToolsRemainActive() async {
+        let store = SessionStore()
+        for id in ["first", "second"] {
+            await store.process(.hookReceived(hook(id: id, status: "processing", timestamp: 100)))
+        }
+        await store.process(.hookReceived(hook(
+            id: "second", status: "notification", timestamp: 110, event: "Notification"
+        )))
+        // Recovery repeats the same evidence while a shell command runs for minutes.
+        await store.process(.hookReceived(hook(id: "second", status: "processing", timestamp: 100)))
+        await store.recheckAllSessions(
+            codexSessionsDirectory: URL(fileURLWithPath: "/tmp/\(UUID().uuidString)"),
+            now: Date(timeIntervalSince1970: 400)
+        )
+        let first = await store.session(for: "first")
+        let second = await store.session(for: "second")
+        #expect(first?.phase == .processing)
+        #expect(second?.phase == .processing)
+        #expect(second?.lastEventTimestamp == 100)
+        #expect(AgentActivitySummary(sessions: [first, second].compactMap { $0 }).runningSessionCount == 2)
+    }
+
+    @Test("Unidentified host hooks and unknown events do not create project-named phantom sessions")
+    func ignoresPhantomSessions() async {
+        let store = SessionStore()
+        await store.process(.hookReceived(hook(id: "unknown", status: "waiting_for_input", event: "SessionStart")))
+        await store.process(.hookReceived(hook(id: "opaque-host", status: "unknown", event: "")))
+        await store.process(.hookReceived(hook(id: "notice", status: "notification", event: "Notification")))
+        #expect(await store.session(for: "unknown") == nil)
+        #expect(await store.session(for: "opaque-host") == nil)
+        #expect(await store.session(for: "notice") == nil)
+    }
+
+    @Test("Explicit ready notifications still finish a turn",
+          arguments: ["idle_prompt", "agent_needs_input", "agent_completed"])
+    func idlePromptIsStillAuthoritative(notificationType: String) async {
+        let session = SessionState(
+            sessionId: "first", cwd: "/tmp/project", source: .workbuddy,
+            phase: .processing, lastEventTimestamp: 100
+        )
+        let store = SessionStore(initialSessions: [session])
+        await store.process(.hookReceived(hook(
+            id: "first", status: "notification", timestamp: 200,
+            event: "Notification", notificationType: notificationType
+        )))
+        #expect(await store.session(for: "first")?.phase == .waitingForInput)
+        #expect(await store.session(for: "first")?.lastEventTimestamp == 200)
+    }
+
+    private func hook(
+        id: String, status: String, timestamp: TimeInterval? = nil,
+        event: String = "WorkBuddyRecovery", notificationType: String? = nil
+    ) -> HookEvent {
         HookEvent(
-            sessionId: id, cwd: "/tmp/project", event: "WorkBuddyRecovery", status: status,
+            sessionId: id, cwd: "/tmp/project", event: event, status: status,
             source: "workbuddy", pid: nil, tty: nil, transcriptPath: nil,
             terminalBundleId: nil, terminalPid: nil, tmuxPane: nil, tmuxSocket: nil,
-            tool: nil, toolInput: nil, toolUseId: nil, notificationType: nil, message: nil,
+            tool: nil, toolInput: nil, toolUseId: nil, notificationType: notificationType, message: nil,
             eventTimestamp: timestamp
         )
     }

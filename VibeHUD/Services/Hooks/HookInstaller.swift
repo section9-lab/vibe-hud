@@ -308,11 +308,13 @@ struct HookInstaller {
         }
 
         let command = "python3 \(shellQuote(script.path)) --source workbuddy"
-        let hook = [["type": "command", "command": command]]
         let matcherEvents: Set<String> = ["PreToolUse", "PostToolUse", "Notification"]
         var hooks = json["hooks"] as? [String: Any] ?? [:]
 
         for event in workBuddyEvents {
+            // Some WorkBuddy payloads omit hook_event_name. The configuration
+            // itself is the reliable event identity, not a guessed default.
+            let hook = [["type": "command", "command": "\(command) --event \(event)"]]
             let existing = hooks[event] as? [[String: Any]] ?? []
             let cleaned = existing.compactMap { removingVibeHUDHooks(from: $0) }
             let entry: [String: Any] = matcherEvents.contains(event)

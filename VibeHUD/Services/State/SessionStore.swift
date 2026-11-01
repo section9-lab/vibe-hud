@@ -155,6 +155,10 @@ actor SessionStore {
             clearCodexCompletionTracking(sessionId: sessionId)
             return
         }
+        guard event.updatesSessionPhase || event.event == "WorkBuddyRecovery" else {
+            Self.logger.debug("Ignoring non-lifecycle hook \(event.event, privacy: .public) status=\(event.status, privacy: .public) for \(sessionId.prefix(8), privacy: .public)")
+            return
+        }
         var session = sessions[sessionId] ?? createSession(from: event)
 
         if event.event == "WorkBuddyRecovery", let existing = sessions[sessionId] {
@@ -231,6 +235,9 @@ actor SessionStore {
         }
 
         if session.phase.canTransition(to: newPhase) {
+            if session.source == .workbuddy, session.phase != newPhase {
+                Self.logger.info("WorkBuddy phase \(sessionId.prefix(8), privacy: .public): \(String(describing: session.phase), privacy: .public) -> \(String(describing: newPhase), privacy: .public), event=\(event.event, privacy: .public), status=\(event.status, privacy: .public)")
+            }
             session.phase = newPhase
         } else {
             Self.logger.debug("Invalid transition: \(String(describing: session.phase), privacy: .public) -> \(String(describing: newPhase), privacy: .public), ignoring")

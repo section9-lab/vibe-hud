@@ -65,6 +65,25 @@ class HookStateAdapterTests(unittest.TestCase):
         self.assertEqual(len(sent), 1)
         return sent[0]
 
+    def test_workbuddy_host_hooks_without_session_identity_are_ignored(self):
+        for payload in ({}, {"session_id": "unknown"}, {"sessionId": "   "}):
+            with self.subTest(payload=payload):
+                adapter = load_adapter()
+                with mock.patch.object(sys, "argv", [str(SCRIPT), "--source", "workbuddy", "--event", "SessionStart"]), \
+                     mock.patch.object(sys, "stdin", io.StringIO(__import__("json").dumps(payload))), \
+                     mock.patch.object(adapter, "send_event") as send:
+                    adapter.main()
+                send.assert_not_called()
+
+    def test_workbuddy_uses_configured_event_and_camel_case_transcript_path(self):
+        state = self.run_adapter(
+            {"sessionId": "actual-task", "cwd": "/tmp/project", "transcriptPath": "/tmp/actual-task.jsonl"},
+            "--source", "workbuddy", "--event", "PreToolUse",
+        )
+        self.assertEqual(state["event"], "PreToolUse")
+        self.assertEqual(state["status"], "running_tool")
+        self.assertEqual(state["transcript_path"], "/tmp/actual-task.jsonl")
+
     def test_copilot_camel_case_payload_uses_explicit_event(self):
         state = self.run_adapter(
             {

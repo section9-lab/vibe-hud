@@ -266,6 +266,10 @@ def main():
         or data.get("conversationId")
         or "unknown"
     )
+    # WorkBuddy can emit host-level hooks without a conversation identity.
+    # Do not turn the shared "unknown" fallback into a project-named session.
+    if source == "workbuddy" and str(session_id).strip().lower() in {"", "unknown"}:
+        return
     if source == "vscodeagent" and not str(session_id).startswith("vscodeagent-"):
         session_id = f"vscodeagent-{session_id}"
     raw_event = parse_event_arg() or data.get("hook_event_name") or data.get("hookEventName") or ""
@@ -307,7 +311,7 @@ def main():
         "source": source,
         "pid": agent_pid,
         "tty": tty,
-        "transcript_path": data.get("transcript_path"),
+        "transcript_path": data.get("transcript_path") or data.get("transcriptPath"),
         "terminal_pid": terminal_pid,
         "terminal_bundle_id": terminal_bundle_id,
         "tmux_pane": os.environ.get("TMUX_PANE"),
