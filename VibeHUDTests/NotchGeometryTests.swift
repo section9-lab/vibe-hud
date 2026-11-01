@@ -24,6 +24,16 @@ struct NotchGeometryTests {
         #expect(geometry.isPointOutsidePanel(CGPoint(x: 0, y: 0), size: size))
     }
 
+    @Test("Interactive window is limited to the visible HUD at the top center")
+    func interactionWindowDoesNotCoverOtherApps() {
+        let size = CGSize(width: 384, height: 420)
+        let frame = geometry.interactionWindowFrame(for: size)
+
+        #expect(frame == CGRect(x: 408, y: 380, width: 384, height: 420))
+        #expect(!frame.contains(CGPoint(x: 100, y: 700)))
+        #expect(!frame.contains(CGPoint(x: 600, y: 100)))
+    }
+
     @Test("Notch hit target includes interaction padding")
     func notchHitTargetHasPadding() {
         #expect(geometry.isPointInNotch(CGPoint(x: 495, y: 766)))

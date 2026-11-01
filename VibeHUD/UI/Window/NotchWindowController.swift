@@ -69,7 +69,15 @@ class NotchWindowController: NSWindowController {
             .sink { [weak notchWindow, weak viewModel] status in
                 switch status {
                 case .opened:
-                    // Accept mouse events when opened so buttons work
+                    // Bound the interactive NSPanel to the visible HUD before
+                    // accepting input. Clicks elsewhere remain original system
+                    // events and require no Accessibility permission.
+                    if let viewModel {
+                        notchWindow?.setFrame(
+                            viewModel.geometry.interactionWindowFrame(for: viewModel.openedSize),
+                            display: true
+                        )
+                    }
                     notchWindow?.ignoresMouseEvents = false
                     // Don't steal focus when opened by notification (task finished)
                     if viewModel?.openReason != .notification {
@@ -77,8 +85,25 @@ class NotchWindowController: NSWindowController {
                         notchWindow?.makeKey()
                     }
                 case .closed, .popping:
-                    // Ignore mouse events when closed so clicks pass through
+                    // Stop intercepting first, then restore the passive full-width
+                    // canvas used to center closed-notch animations.
                     notchWindow?.ignoresMouseEvents = true
+                    notchWindow?.setFrame(windowFrame, display: true)
+                }
+            }
+            .store(in: &cancellables)
+
+        // Content and menu heights can change while the HUD is open. Resize the
+        // panel after @Published values commit so its hit region stays accurate.
+        viewModel.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak notchWindow, weak viewModel] in
+                DispatchQueue.main.async {
+                    guard let notchWindow, let viewModel, viewModel.status == .opened else { return }
+                    notchWindow.setFrame(
+                        viewModel.geometry.interactionWindowFrame(for: viewModel.openedSize),
+                        display: true
+                    )
                 }
             }
             .store(in: &cancellables)

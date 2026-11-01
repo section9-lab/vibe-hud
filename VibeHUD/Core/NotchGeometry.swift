@@ -37,6 +37,18 @@ struct NotchGeometry: Sendable {
         )
     }
 
+    /// Window bounds while the HUD is interactive. Keeping the actual NSPanel
+    /// bounded to the visible HUD lets clicks elsewhere reach other apps without
+    /// intercepting and synthesizing CGEvents (and therefore without Accessibility).
+    func interactionWindowFrame(for size: CGSize) -> CGRect {
+        CGRect(
+            x: screenRect.midX - size.width / 2,
+            y: screenRect.maxY - size.height,
+            width: size.width,
+            height: size.height
+        )
+    }
+
     /// Check if a point is in the notch area (with padding for easier interaction)
     func isPointInNotch(_ point: CGPoint) -> Bool {
         notchScreenRect.insetBy(dx: -10, dy: -5).contains(point)

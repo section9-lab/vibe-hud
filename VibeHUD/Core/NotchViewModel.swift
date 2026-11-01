@@ -205,9 +205,10 @@ class NotchViewModel: ObservableObject {
         switch status {
         case .opened:
             if geometry.isPointOutsidePanel(location, size: openedSize) {
+                // The panel window only covers the visible HUD. This global
+                // monitor observes the original click without intercepting it,
+                // so the app underneath receives it normally.
                 notchClose()
-                // Re-post the click so it reaches the window/app behind us
-                repostClickAt(location)
             } else if geometry.notchScreenRect.contains(location) {
                 // Clicking notch while opened - only close if NOT in chat mode
                 if !isInChatMode {
@@ -217,37 +218,6 @@ class NotchViewModel: ObservableObject {
         case .closed, .popping:
             if geometry.isPointInNotch(location) {
                 notchOpen(reason: .click)
-            }
-        }
-    }
-
-    /// Re-posts a mouse click at the given screen location so it reaches windows behind us
-    private func repostClickAt(_ location: CGPoint) {
-        // Small delay to let the window's ignoresMouseEvents update
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            // Convert to CGEvent coordinate system (screen coordinates with Y from top-left)
-            guard let screen = NSScreen.main else { return }
-            let screenHeight = screen.frame.height
-            let cgPoint = CGPoint(x: location.x, y: screenHeight - location.y)
-
-            // Create and post mouse down event
-            if let mouseDown = CGEvent(
-                mouseEventSource: nil,
-                mouseType: .leftMouseDown,
-                mouseCursorPosition: cgPoint,
-                mouseButton: .left
-            ) {
-                mouseDown.post(tap: .cghidEventTap)
-            }
-
-            // Create and post mouse up event
-            if let mouseUp = CGEvent(
-                mouseEventSource: nil,
-                mouseType: .leftMouseUp,
-                mouseCursorPosition: cgPoint,
-                mouseButton: .left
-            ) {
-                mouseUp.post(tap: .cghidEventTap)
             }
         }
     }

@@ -74,3 +74,9 @@ if [ -d "$repo_root/VibeHUD/AppIcon.icon" ]; then
     echo "The unsupported AppIcon.icon source must not be packaged" >&2
     exit 1
 fi
+
+if grep -RqsE --include='*.swift' --include='*.plist' \
+    'AXIsProcessTrusted|Privacy_Accessibility|CGEvent[[:space:]]*\(' "$repo_root/VibeHUD"; then
+    echo "The app must not require Accessibility permission or synthesize input events" >&2
+    exit 1
+fi
