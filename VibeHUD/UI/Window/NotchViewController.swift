@@ -8,6 +8,28 @@
 import AppKit
 import SwiftUI
 
+enum NotchHitTesting {
+    nonisolated static func rect(
+        status: NotchStatus,
+        windowBounds: CGRect,
+        notchSize: CGSize
+    ) -> CGRect {
+        switch status {
+        case .opened:
+            // The interactive NSPanel is already resized to the visible HUD.
+            // Accept its entire local bounds, including the right-side settings button.
+            return windowBounds
+        case .closed, .popping:
+            return CGRect(
+                x: (windowBounds.width - notchSize.width) / 2 - 10,
+                y: windowBounds.height - notchSize.height - 5,
+                width: notchSize.width + 20,
+                height: notchSize.height + 10
+            )
+        }
+    }
+}
+
 /// Custom NSHostingView that only accepts mouse events within the panel bounds.
 /// Clicks outside the panel pass through to windows behind.
 class PassThroughHostingView<Content: View>: NSHostingView<Content> {
@@ -42,37 +64,11 @@ class NotchViewController: NSViewController {
         hostingView.hitTestRect = { [weak self] in
             guard let self = self else { return .zero }
             let vm = self.viewModel
-            let geometry = vm.geometry
-
-            // Window coordinates: origin at bottom-left, Y increases upward
-            // The window is positioned at top of screen, so panel is at top of window
-            let windowHeight = geometry.windowHeight
-
-            switch vm.status {
-            case .opened:
-                let panelSize = vm.openedSize
-                // Panel is centered horizontally, anchored to top
-                let panelWidth = panelSize.width + 52  // Account for corner radius padding
-                let panelHeight = panelSize.height
-                let screenWidth = geometry.screenRect.width
-                return CGRect(
-                    x: (screenWidth - panelWidth) / 2,
-                    y: windowHeight - panelHeight,
-                    width: panelWidth,
-                    height: panelHeight
-                )
-            case .closed, .popping:
-                // When closed, use the notch rect
-                let notchRect = geometry.deviceNotchRect
-                let screenWidth = geometry.screenRect.width
-                // Add some padding for easier interaction
-                return CGRect(
-                    x: (screenWidth - notchRect.width) / 2 - 10,
-                    y: windowHeight - notchRect.height - 5,
-                    width: notchRect.width + 20,
-                    height: notchRect.height + 10
-                )
-            }
+            return NotchHitTesting.rect(
+                status: vm.status,
+                windowBounds: self.hostingView.bounds,
+                notchSize: vm.geometry.deviceNotchRect.size
+            )
         }
 
         self.view = hostingView

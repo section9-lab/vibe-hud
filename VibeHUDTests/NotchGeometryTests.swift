@@ -34,6 +34,30 @@ struct NotchGeometryTests {
         #expect(!frame.contains(CGPoint(x: 600, y: 100)))
     }
 
+    @Test("Opened hit region includes the settings button at the right edge")
+    func openedHitRegionUsesResizedWindowCoordinates() {
+        let bounds = CGRect(x: 0, y: 0, width: 384, height: 420)
+        let hitRegion = NotchHitTesting.rect(
+            status: .opened,
+            windowBounds: bounds,
+            notchSize: CGSize(width: 200, height: 32)
+        )
+
+        #expect(hitRegion == bounds)
+        #expect(hitRegion.contains(CGPoint(x: 373, y: 409)))
+    }
+
+    @Test("Closed hit region remains centered in the passive window")
+    func closedHitRegionUsesLocalWindowCoordinates() {
+        let hitRegion = NotchHitTesting.rect(
+            status: .closed,
+            windowBounds: CGRect(x: 0, y: 0, width: 1_200, height: 750),
+            notchSize: CGSize(width: 200, height: 32)
+        )
+
+        #expect(hitRegion == CGRect(x: 490, y: 713, width: 220, height: 42))
+    }
+
     @Test("Notch hit target includes interaction padding")
     func notchHitTargetHasPadding() {
         #expect(geometry.isPointInNotch(CGPoint(x: 495, y: 766)))
