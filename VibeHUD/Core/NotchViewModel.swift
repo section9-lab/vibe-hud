@@ -73,7 +73,7 @@ class NotchViewModel: ObservableObject {
     var screenRect: CGRect { geometry.screenRect }
     var windowHeight: CGFloat { geometry.windowHeight }
 
-    /// Dynamic opened size based on content type
+    /// Dynamic content size based on content type.
     var openedSize: CGSize {
         switch contentType {
         case .chat:
@@ -93,6 +93,16 @@ class NotchViewModel: ObservableObject {
                 height: min(windowHeight, deviceNotchRect.height + 12 + instancesContentHeight)
             )
         }
+    }
+
+    /// Full native panel size. The shape's top shoulders extend beyond the
+    /// content width, so the window must include them instead of clipping the
+    /// content or shrinking its controls.
+    var openedWindowSize: CGSize {
+        CGSize(
+            width: NotchLayoutMetrics.renderedWidth(for: openedSize.width),
+            height: openedSize.height
+        )
     }
 
     // MARK: - Animation
@@ -173,7 +183,7 @@ class NotchViewModel: ObservableObject {
     private func handleMouseMove(_ location: CGPoint) {
         let inNotch = geometry.isPointInNotch(location)
         let inOpened =
-            status == .opened && geometry.isPointInOpenedPanel(location, size: openedSize)
+            status == .opened && geometry.isPointInOpenedPanel(location, size: openedWindowSize)
 
         let newHovering = inNotch || inOpened
 
@@ -202,13 +212,13 @@ class NotchViewModel: ObservableObject {
 
     private func handleMouseDown() {
         let location = NSEvent.mouseLocation
-        if status == .opened && geometry.isPointInOpenedPanel(location, size: openedSize) {
+        if status == .opened && geometry.isPointInOpenedPanel(location, size: openedWindowSize) {
             AppAnalytics.shared.recordActivity()
         }
 
         switch status {
         case .opened:
-            if geometry.isPointOutsidePanel(location, size: openedSize) {
+            if geometry.isPointOutsidePanel(location, size: openedWindowSize) {
                 // The panel window only covers the visible HUD. This global
                 // monitor observes the original click without intercepting it,
                 // so the app underneath receives it normally.

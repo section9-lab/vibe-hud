@@ -10,10 +10,13 @@ struct NotchViewModelTests {
         let model = makeModel(screenWidth: 2_000)
 
         #expect(model.openedSize.width == 384)
+        #expect(model.openedWindowSize.width == 422)
         model.contentType = .menu
         #expect(model.openedSize.width == 384)
+        #expect(model.openedWindowSize.width == 422)
         model.contentType = .chat(makeSession())
         #expect(model.openedSize.width == 480)
+        #expect(model.openedWindowSize.width == 518)
     }
 
     @Test("Caps the session list at five visible rows")

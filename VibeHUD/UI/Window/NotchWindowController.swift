@@ -84,10 +84,12 @@ class NotchWindowController: NSWindowController {
                               viewModel.status == .opened else { return }
                         self.pendingInteractionEnable = nil
                         notchWindow.setFrame(
-                            viewModel.geometry.interactionWindowFrame(for: viewModel.openedSize),
+                            viewModel.geometry.interactionWindowFrame(for: viewModel.openedWindowSize),
                             display: true
                         )
                         notchWindow.ignoresMouseEvents = false
+                        notchWindow.hasShadow = true
+                        notchWindow.invalidateShadow()
                         // Don't steal focus when opened by notification (task finished)
                         if viewModel.openReason != .notification {
                             NSApp.activate(ignoringOtherApps: false)
@@ -104,6 +106,7 @@ class NotchWindowController: NSWindowController {
                     // Stop intercepting first, then restore the passive full-width
                     // canvas used to center closed-notch animations.
                     notchWindow?.ignoresMouseEvents = true
+                    notchWindow?.hasShadow = false
                     notchWindow?.setFrame(windowFrame, display: true)
                 }
             }
@@ -118,9 +121,10 @@ class NotchWindowController: NSWindowController {
                     guard let self, self.pendingInteractionEnable == nil,
                           let notchWindow, let viewModel, viewModel.status == .opened else { return }
                     notchWindow.setFrame(
-                        viewModel.geometry.interactionWindowFrame(for: viewModel.openedSize),
+                        viewModel.geometry.interactionWindowFrame(for: viewModel.openedWindowSize),
                         display: true
                     )
+                    notchWindow.invalidateShadow()
                 }
             }
             .store(in: &cancellables)

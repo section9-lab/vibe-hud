@@ -24,7 +24,6 @@ struct NotchView: View {
     @State private var previousWaitingForInputIds: Set<String> = []
     @State private var waitingForInputTimestamps: [String: Date] = [:]  // sessionId -> when it entered waitingForInput
     @State private var isVisible: Bool = true
-    @State private var isHovering: Bool = false
     @State private var isBouncing: Bool = false
     @State private var showsOpenedContent: Bool = false
     @State private var contentRevealTask: Task<Void, Never>?
@@ -181,10 +180,6 @@ struct NotchView: View {
                             .frame(height: 1)
                             .padding(.horizontal, topCornerRadius)
                     }
-                    .shadow(
-                        color: (viewModel.status == .opened || isHovering) ? .black.opacity(0.7) : .clear,
-                        radius: 6
-                    )
                     .frame(
                         maxWidth: viewModel.status == .opened ? notchSize.width : nil,
                         maxHeight: viewModel.status == .opened ? notchSize.height : nil,
@@ -198,11 +193,6 @@ struct NotchView: View {
                     .animation(.smooth, value: hasWaitingForInput)
                     .animation(.spring(response: 0.3, dampingFraction: 0.5), value: isBouncing)
                     .contentShape(Rectangle())
-                    .onHover { hovering in
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.8)) {
-                            isHovering = hovering
-                        }
-                    }
                     .onTapGesture {
                         if viewModel.status != .opened {
                             viewModel.notchOpen(reason: .click)

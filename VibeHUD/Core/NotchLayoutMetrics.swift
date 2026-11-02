@@ -1,11 +1,11 @@
 import CoreGraphics
 
-/// Keeps the opened HUD's rendered shape inside the same bounds used by its
-/// native interaction window. Adding the corner radius outside these bounds
-/// clips the two top outer corners when the NSPanel is narrowed after opening.
+/// Separates the opened HUD's content width from the full rendered shape.
+/// The native panel includes the top shoulder padding so controls keep their
+/// intended width and the outer corners are not clipped.
 enum NotchLayoutMetrics {
     static let openedContentPadding: CGFloat = 12
-    static let openedShapePadding: CGFloat = 0
+    static let openedShapePadding: CGFloat = 19
 
     nonisolated static func openedContentWidth(for outerWidth: CGFloat) -> CGFloat {
         max(0, outerWidth - 2 * openedContentPadding)
