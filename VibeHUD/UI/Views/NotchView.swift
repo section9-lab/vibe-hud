@@ -166,10 +166,13 @@ struct NotchView: View {
                     .padding(
                         .horizontal,
                         viewModel.status == .opened
-                            ? cornerRadiusInsets.opened.top
+                            ? NotchLayoutMetrics.openedShapePadding
                             : cornerRadiusInsets.closed.top
                     )
-                    .padding([.horizontal, .bottom], viewModel.status == .opened ? 12 : 0)
+                    .padding(
+                        [.horizontal, .bottom],
+                        viewModel.status == .opened ? NotchLayoutMetrics.openedContentPadding : 0
+                    )
                     .background(.black)
                     .clipShape(currentNotchShape)
                     .overlay(alignment: .top) {
@@ -246,7 +249,7 @@ struct NotchView: View {
             // Main content only when opened
             if viewModel.status == .opened {
                 contentView
-                    .frame(width: notchSize.width - 24) // Fixed width to prevent reflow
+                    .frame(width: NotchLayoutMetrics.openedContentWidth(for: notchSize.width)) // Fixed width to prevent reflow
                     .opacity(showsOpenedContent ? 1 : 0)
                     .allowsHitTesting(showsOpenedContent)
                     .transition(.identity)
