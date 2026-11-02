@@ -13,6 +13,12 @@ class NotchWindowController: NSWindowController {
     let viewModel: NotchViewModel
     private let screen: NSScreen
     private var cancellables = Set<AnyCancellable>()
+    private var pendingInteractionEnable: DispatchWorkItem?
+
+    /// The SwiftUI notch uses a spring with a ~0.42 second response. Keep the
+    /// passive canvas until it settles so resizing the NSPanel cannot clip the
+    /// expanding rounded corners.
+    private let openingTransitionDelay: TimeInterval = 0.45
 
     init(screen: NSScreen, animateOnLaunch: Bool = true) {
         self.screen = screen
@@ -66,24 +72,38 @@ class NotchWindowController: NSWindowController {
         // - Opened: ignoresMouseEvents = false (buttons inside panel work)
         viewModel.$status
             .receive(on: DispatchQueue.main)
-            .sink { [weak notchWindow, weak viewModel] status in
+            .sink { [weak self, weak notchWindow, weak viewModel] status in
+                guard let self else { return }
+                self.pendingInteractionEnable?.cancel()
+                self.pendingInteractionEnable = nil
+
                 switch status {
                 case .opened:
-                    // Bound the interactive NSPanel to the visible HUD before
-                    // accepting input. Clicks elsewhere remain original system
-                    // events and require no Accessibility permission.
-                    if let viewModel {
-                        notchWindow?.setFrame(
+                    // The passive full-width window ignores input while SwiftUI
+                    // performs its rounded-corner spring. Shrink only after the
+                    // animation settles, then make the visible HUD interactive.
+                    notchWindow?.ignoresMouseEvents = true
+                    let enableInteraction = DispatchWorkItem { [weak self, weak notchWindow, weak viewModel] in
+                        guard let self, let notchWindow, let viewModel,
+                              viewModel.status == .opened else { return }
+                        self.pendingInteractionEnable = nil
+                        notchWindow.setFrame(
                             viewModel.geometry.interactionWindowFrame(for: viewModel.openedSize),
                             display: true
                         )
+                        notchWindow.ignoresMouseEvents = false
+                        // Don't steal focus when opened by notification (task finished)
+                        if viewModel.openReason != .notification {
+                            NSApp.activate(ignoringOtherApps: false)
+                            notchWindow.makeKey()
+                        }
                     }
-                    notchWindow?.ignoresMouseEvents = false
-                    // Don't steal focus when opened by notification (task finished)
-                    if viewModel?.openReason != .notification {
-                        NSApp.activate(ignoringOtherApps: false)
-                        notchWindow?.makeKey()
-                    }
+                    self.pendingInteractionEnable = enableInteraction
+                    DispatchQueue.main.asyncAfter(
+                        deadline: .now() + self.openingTransitionDelay,
+                        execute: enableInteraction
+                    )
+
                 case .closed, .popping:
                     // Stop intercepting first, then restore the passive full-width
                     // canvas used to center closed-notch animations.
@@ -97,9 +117,10 @@ class NotchWindowController: NSWindowController {
         // panel after @Published values commit so its hit region stays accurate.
         viewModel.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak notchWindow, weak viewModel] in
+            .sink { [weak self, weak notchWindow, weak viewModel] in
                 DispatchQueue.main.async {
-                    guard let notchWindow, let viewModel, viewModel.status == .opened else { return }
+                    guard let self, self.pendingInteractionEnable == nil,
+                          let notchWindow, let viewModel, viewModel.status == .opened else { return }
                     notchWindow.setFrame(
                         viewModel.geometry.interactionWindowFrame(for: viewModel.openedSize),
                         display: true
@@ -121,5 +142,9 @@ class NotchWindowController: NSWindowController {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        pendingInteractionEnable?.cancel()
     }
 }
