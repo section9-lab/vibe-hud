@@ -26,6 +26,8 @@ struct NotchView: View {
     @State private var isVisible: Bool = true
     @State private var isHovering: Bool = false
     @State private var isBouncing: Bool = false
+    @State private var showsOpenedContent: Bool = false
+    @State private var contentRevealTask: Task<Void, Never>?
 
     @Namespace private var activityNamespace
 
@@ -211,6 +213,10 @@ struct NotchView: View {
         .onAppear {
             sessionMonitor.startMonitoring()
         }
+        .onDisappear {
+            contentRevealTask?.cancel()
+            contentRevealTask = nil
+        }
         .onChange(of: viewModel.status) { oldStatus, newStatus in
             handleStatusChange(from: oldStatus, to: newStatus)
         }
@@ -241,14 +247,10 @@ struct NotchView: View {
             if viewModel.status == .opened {
                 contentView
                     .frame(width: notchSize.width - 24) // Fixed width to prevent reflow
-                    .transition(
-                        .asymmetric(
-                            insertion: .scale(scale: 0.8, anchor: .top)
-                                .combined(with: .opacity)
-                                .animation(.smooth(duration: 0.35)),
-                            removal: .opacity.animation(.easeOut(duration: 0.15))
-                        )
-                    )
+                    .opacity(showsOpenedContent ? 1 : 0)
+                    .allowsHitTesting(showsOpenedContent)
+                    .transition(.identity)
+                    .animation(nil, value: showsOpenedContent)
             }
         }
     }
@@ -403,15 +405,34 @@ struct NotchView: View {
     }
 
     private func handleStatusChange(from oldStatus: NotchStatus, to newStatus: NotchStatus) {
+        contentRevealTask?.cancel()
+        contentRevealTask = nil
+
         switch newStatus {
-        case .opened, .popping:
+        case .opened:
             isVisible = true
+            // Keep session rows hidden while the container expands. Revealing
+            // them after the spring settles avoids the old right-to-left wipe.
+            showsOpenedContent = false
+            contentRevealTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(NotchTransitionTiming.openingDuration))
+                guard !Task.isCancelled, viewModel.status == .opened else { return }
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    showsOpenedContent = true
+                }
+                contentRevealTask = nil
+            }
             // Clear waiting-for-input timestamps only when manually opened (user acknowledged)
             if viewModel.openReason == .click || viewModel.openReason == .hover {
                 waitingForInputTimestamps.removeAll()
             }
+        case .popping:
+            isVisible = true
+            showsOpenedContent = false
         case .closed:
-            break
+            showsOpenedContent = false
         }
     }
 

@@ -15,6 +15,10 @@ enum NotchStatus: Equatable {
     case popping
 }
 
+enum NotchTransitionTiming {
+    static let openingDuration: TimeInterval = 0.45
+}
+
 enum NotchOpenReason {
     case click
     case hover

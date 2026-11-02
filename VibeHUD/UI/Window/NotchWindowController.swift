@@ -15,10 +15,6 @@ class NotchWindowController: NSWindowController {
     private var cancellables = Set<AnyCancellable>()
     private var pendingInteractionEnable: DispatchWorkItem?
 
-    /// The SwiftUI notch uses a spring with a ~0.42 second response. Keep the
-    /// passive canvas until it settles so resizing the NSPanel cannot clip the
-    /// expanding rounded corners.
-    private let openingTransitionDelay: TimeInterval = 0.45
 
     init(screen: NSScreen, animateOnLaunch: Bool = true) {
         self.screen = screen
@@ -100,7 +96,7 @@ class NotchWindowController: NSWindowController {
                     }
                     self.pendingInteractionEnable = enableInteraction
                     DispatchQueue.main.asyncAfter(
-                        deadline: .now() + self.openingTransitionDelay,
+                        deadline: .now() + NotchTransitionTiming.openingDuration,
                         execute: enableInteraction
                     )
 
