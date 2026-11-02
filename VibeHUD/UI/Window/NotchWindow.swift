@@ -64,3 +64,34 @@ class NotchPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 }
+
+/// A non-interactive companion window whose only job is drawing the soft
+/// shape-following shadow outside the main panel's bounds.
+final class NotchShadowPanel: NSPanel {
+    init() {
+        super.init(
+            contentRect: .zero,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+
+        isFloatingPanel = true
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        ignoresMouseEvents = true
+        isMovable = false
+        isReleasedWhenClosed = false
+        collectionBehavior = [
+            .fullScreenAuxiliary,
+            .stationary,
+            .canJoinAllSpaces,
+            .ignoresCycle
+        ]
+        level = .mainMenu + 2
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}

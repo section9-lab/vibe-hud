@@ -12,12 +12,14 @@ import SwiftUI
 class NotchWindowController: NSWindowController {
     let viewModel: NotchViewModel
     private let screen: NSScreen
+    private let shadowWindow: NotchShadowPanel
     private var cancellables = Set<AnyCancellable>()
     private var pendingInteractionEnable: DispatchWorkItem?
 
 
     init(screen: NSScreen, animateOnLaunch: Bool = true) {
         self.screen = screen
+        self.shadowWindow = NotchShadowPanel()
 
         let screenFrame = screen.frame
         let notchSize = screen.notchSize
@@ -60,6 +62,10 @@ class NotchWindowController: NSWindowController {
         // Create the SwiftUI view with pass-through hosting
         let hostingController = NotchViewController(viewModel: viewModel)
         notchWindow.contentViewController = hostingController
+        shadowWindow.contentView = NSHostingView(
+            rootView: NotchShadowView(viewModel: viewModel)
+        )
+        shadowWindow.orderOut(nil)
 
         notchWindow.setFrame(windowFrame, display: true)
 
@@ -83,13 +89,12 @@ class NotchWindowController: NSWindowController {
                         guard let self, let notchWindow, let viewModel,
                               viewModel.status == .opened else { return }
                         self.pendingInteractionEnable = nil
-                        notchWindow.setFrame(
-                            viewModel.geometry.interactionWindowFrame(for: viewModel.openedWindowSize),
-                            display: true
+                        let panelFrame = viewModel.geometry.interactionWindowFrame(
+                            for: viewModel.openedWindowSize
                         )
+                        notchWindow.setFrame(panelFrame, display: true)
                         notchWindow.ignoresMouseEvents = false
-                        notchWindow.hasShadow = true
-                        notchWindow.invalidateShadow()
+                        self.showShadow(around: panelFrame, below: notchWindow)
                         // Don't steal focus when opened by notification (task finished)
                         if viewModel.openReason != .notification {
                             NSApp.activate(ignoringOtherApps: false)
@@ -106,7 +111,7 @@ class NotchWindowController: NSWindowController {
                     // Stop intercepting first, then restore the passive full-width
                     // canvas used to center closed-notch animations.
                     notchWindow?.ignoresMouseEvents = true
-                    notchWindow?.hasShadow = false
+                    self.hideShadow(from: notchWindow)
                     notchWindow?.setFrame(windowFrame, display: true)
                 }
             }
@@ -120,11 +125,11 @@ class NotchWindowController: NSWindowController {
                 DispatchQueue.main.async {
                     guard let self, self.pendingInteractionEnable == nil,
                           let notchWindow, let viewModel, viewModel.status == .opened else { return }
-                    notchWindow.setFrame(
-                        viewModel.geometry.interactionWindowFrame(for: viewModel.openedWindowSize),
-                        display: true
+                    let panelFrame = viewModel.geometry.interactionWindowFrame(
+                        for: viewModel.openedWindowSize
                     )
-                    notchWindow.invalidateShadow()
+                    notchWindow.setFrame(panelFrame, display: true)
+                    self.showShadow(around: panelFrame, below: notchWindow)
                 }
             }
             .store(in: &cancellables)
@@ -140,11 +145,30 @@ class NotchWindowController: NSWindowController {
         }
     }
 
+    private func showShadow(around panelFrame: CGRect, below notchWindow: NSWindow) {
+        shadowWindow.setFrame(
+            NotchShadowMetrics.windowFrame(around: panelFrame),
+            display: true
+        )
+        if shadowWindow.parent !== notchWindow {
+            shadowWindow.orderFront(nil)
+            notchWindow.addChildWindow(shadowWindow, ordered: .below)
+        }
+    }
+
+    private func hideShadow(from notchWindow: NSWindow?) {
+        if let notchWindow, shadowWindow.parent === notchWindow {
+            notchWindow.removeChildWindow(shadowWindow)
+        }
+        shadowWindow.orderOut(nil)
+    }
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
     deinit {
         pendingInteractionEnable?.cancel()
+        shadowWindow.orderOut(nil)
     }
 }
