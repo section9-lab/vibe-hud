@@ -128,6 +128,8 @@ class NotchWindowController: NSWindowController {
                     let panelFrame = viewModel.geometry.interactionWindowFrame(
                         for: viewModel.openedWindowSize
                     )
+                    guard notchWindow.frame != panelFrame else { return }
+                    self.hideShadow(from: notchWindow)
                     notchWindow.setFrame(panelFrame, display: true)
                     self.showShadow(around: panelFrame, below: notchWindow)
                 }

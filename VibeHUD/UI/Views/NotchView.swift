@@ -187,7 +187,9 @@ struct NotchView: View {
                     )
                     .offset(x: closedNotchOffset)
                     .animation(viewModel.status == .opened ? openAnimation : closeAnimation, value: viewModel.status)
-                    .animation(openAnimation, value: notchSize) // Animate container size changes between content types
+                    // Content-type size changes are intentionally immediate.
+                    // Animating the AppKit panel and SwiftUI layout independently
+                    // causes edge tearing while opening settings or chat.
                     .animation(.smooth, value: activityCoordinator.expandingActivity)
                     .animation(.smooth, value: hasPendingPermission)
                     .animation(.smooth, value: hasWaitingForInput)
@@ -328,11 +330,9 @@ struct NotchView: View {
 
             // Menu toggle
             Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    viewModel.toggleMenu()
-                    if viewModel.contentType == .menu {
-                        updateManager.markUpdateSeen()
-                    }
+                viewModel.toggleMenu()
+                if viewModel.contentType == .menu {
+                    updateManager.markUpdateSeen()
                 }
             } label: {
                 Image(systemName: viewModel.contentType == .menu ? "xmark" : "line.3.horizontal")
