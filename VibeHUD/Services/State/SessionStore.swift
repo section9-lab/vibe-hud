@@ -200,6 +200,9 @@ actor SessionStore {
         if session.source == .workbuddy, session.transcriptPath?.isEmpty != false {
             session.transcriptPath = WorkBuddyPaths.transcriptFile(sessionId: sessionId, cwd: event.cwd)?.path
         }
+        if session.source == .pi, session.transcriptPath?.isEmpty != false {
+            session.transcriptPath = PiPaths.transcriptFile(sessionId: sessionId, cwd: event.cwd)?.path
+        }
         if session.source == .codex, let turnId = event.turnId, !turnId.isEmpty {
             activeCodexTurnIds[sessionId] = turnId
         }

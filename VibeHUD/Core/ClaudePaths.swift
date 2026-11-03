@@ -204,13 +204,61 @@ enum CopilotPaths {
 }
 
 enum PiPaths {
-    nonisolated static var extensionsDir: URL {
+    nonisolated static var agentDir: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".pi/agent/extensions")
+            .appendingPathComponent(".pi/agent")
+    }
+
+    nonisolated static var extensionsDir: URL {
+        agentDir.appendingPathComponent("extensions")
+    }
+
+    nonisolated static var sessionsDir: URL {
+        agentDir.appendingPathComponent("sessions")
     }
 
     nonisolated static var extensionFile: URL {
         extensionsDir.appendingPathComponent("vibe-hud.ts")
+    }
+
+    nonisolated static func transcriptFile(
+        sessionId: String,
+        cwd: String,
+        sessionsDirectory: URL = sessionsDir
+    ) -> URL? {
+        let rawSessionId = sessionId.hasPrefix("pi-")
+            ? String(sessionId.dropFirst(3))
+            : sessionId
+        let suffix = "_\(rawSessionId).jsonl"
+        let encodedProject = "--" + cwd
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            .replacingOccurrences(of: "/", with: "-") + "--"
+
+        let projectDirectory = sessionsDirectory.appendingPathComponent(encodedProject)
+        if let match = transcriptEnding(with: suffix, in: projectDirectory) {
+            return match
+        }
+
+        let projectDirectories = (try? FileManager.default.contentsOfDirectory(
+            at: sessionsDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        for directory in projectDirectories {
+            if let match = transcriptEnding(with: suffix, in: directory) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    nonisolated private static func transcriptEnding(with suffix: String, in directory: URL) -> URL? {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        return files.first { $0.lastPathComponent.hasSuffix(suffix) }
     }
 }
 

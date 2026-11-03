@@ -80,3 +80,9 @@ if grep -RqsE --include='*.swift' --include='*.plist' \
     echo "The app must not require Accessibility permission or synthesize input events" >&2
     exit 1
 fi
+
+if ! grep -Fq 'transcript_path: ctx.sessionManager.getSessionFile()' \
+    "$repo_root/VibeHUD/Services/Hooks/HookInstaller.swift"; then
+    echo "The Pi extension must report its transcript so messages can be displayed" >&2
+    exit 1
+fi

@@ -52,6 +52,10 @@ enum SessionSource: String, Codable, Equatable, Hashable, Sendable {
                 self = .codex
                 return
             }
+            if lowercasedPath.contains("/.pi/agent/sessions/") {
+                self = .pi
+                return
+            }
             if lowercasedPath.contains("/.local/share/opencode/") {
                 self = .opencode
                 return

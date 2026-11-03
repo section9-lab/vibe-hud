@@ -615,6 +615,7 @@ struct HookInstaller {
         status,
         source: "pi",
         pid: process.pid,
+        transcript_path: ctx.sessionManager.getSessionFile(),
         event_timestamp: Date.now() / 1000,
       }
     }

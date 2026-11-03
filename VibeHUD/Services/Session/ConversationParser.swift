@@ -154,6 +154,10 @@ actor ConversationParser {
             return parseOpenCodeConversationInfo(filePath: filePath)
         }
 
+        if isPiTranscript(filePath: filePath, content: content) {
+            return parsePiContent(content)
+        }
+
         if isWorkBuddyTranscript(filePath: filePath, content: content) {
             return parseWorkBuddyContent(content)
         }
@@ -443,6 +447,10 @@ actor ConversationParser {
             return parseNewOpenCodeLines(filePath: filePath, state: &state)
         }
 
+        if isPiTranscript(filePath: filePath) {
+            return parseNewPiLines(filePath: filePath, state: &state)
+        }
+
         if isWorkBuddyTranscript(filePath: filePath) {
             return parseNewWorkBuddyLines(filePath: filePath, state: &state)
         }
@@ -600,6 +608,17 @@ actor ConversationParser {
         filePath.contains("/.local/share/opencode/storage/session/")
     }
 
+    nonisolated private func isPiTranscript(filePath: String, content: String? = nil) -> Bool {
+        if filePath.contains("/.pi/agent/sessions/") {
+            return true
+        }
+        if let content {
+            return content.contains("\"type\":\"session\",\"version\":3") &&
+                content.contains("\"type\":\"message\"")
+        }
+        return false
+    }
+
     nonisolated private func isCodexTranscript(filePath: String, content: String? = nil) -> Bool {
         if filePath.contains("/.codex/") {
             return true
@@ -619,6 +638,213 @@ actor ConversationParser {
                 content.contains("\"type\":\"function_call_result\"")
         }
         return false
+    }
+
+    private func parsePiContent(_ content: String) -> ConversationInfo {
+        var summary: String?
+        var lastMessage: String?
+        var lastMessageRole: String?
+        var lastToolName: String?
+        var firstUserMessage: String?
+        var lastUserMessageDate: Date?
+        var usage = UsageInfo()
+
+        for line in content.components(separatedBy: "\n") where !line.isEmpty {
+            guard let data = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let type = json["type"] as? String else { continue }
+
+            if type == "session_info" {
+                if let name = json["name"] as? String, !name.isEmpty {
+                    summary = Self.truncateMessage(name, maxLength: 80)
+                }
+                continue
+            }
+
+            guard type == "message",
+                  let message = json["message"] as? [String: Any],
+                  let role = message["role"] as? String else { continue }
+
+            if role == "assistant", let usageDict = message["usage"] as? [String: Any] {
+                usage.inputTokens += usageDict["input"] as? Int ?? 0
+                usage.outputTokens += usageDict["output"] as? Int ?? 0
+                usage.cacheReadTokens += usageDict["cacheRead"] as? Int ?? 0
+                usage.cacheCreationTokens += usageDict["cacheWrite"] as? Int ?? 0
+            }
+
+            if role == "user", let text = piText(from: message), !text.isEmpty {
+                if firstUserMessage == nil {
+                    firstUserMessage = Self.truncateMessage(text, maxLength: 50)
+                }
+                lastUserMessageDate = piTimestamp(json["timestamp"])
+                lastMessage = Self.truncateMessage(text, maxLength: 80)
+                lastMessageRole = "user"
+                lastToolName = nil
+                continue
+            }
+
+            guard role == "assistant",
+                  let blocks = message["content"] as? [[String: Any]] else { continue }
+            for block in blocks {
+                switch block["type"] as? String {
+                case "text":
+                    if let text = block["text"] as? String, !text.isEmpty {
+                        lastMessage = Self.truncateMessage(text, maxLength: 80)
+                        lastMessageRole = "assistant"
+                        lastToolName = nil
+                    }
+                case "toolCall":
+                    guard let name = block["name"] as? String else { continue }
+                    let input = piToolInput(block["arguments"])
+                    lastMessage = Self.truncateMessage(
+                        Self.formatToolInput(input, toolName: name),
+                        maxLength: 80
+                    )
+                    lastMessageRole = "tool"
+                    lastToolName = name
+                default:
+                    continue
+                }
+            }
+        }
+
+        return ConversationInfo(
+            summary: summary,
+            lastMessage: lastMessage,
+            lastMessageRole: lastMessageRole,
+            lastToolName: lastToolName,
+            firstUserMessage: firstUserMessage,
+            lastUserMessageDate: lastUserMessageDate,
+            usage: usage
+        )
+    }
+
+    private func parseNewPiLines(filePath: String, state: inout IncrementalParseState) -> [ChatMessage] {
+        guard let fileHandle = FileHandle(forReadingAtPath: filePath) else { return [] }
+        defer { try? fileHandle.close() }
+
+        guard let fileSize = try? fileHandle.seekToEnd() else { return [] }
+        if fileSize < state.lastFileOffset {
+            state = IncrementalParseState()
+        }
+        if fileSize == state.lastFileOffset { return [] }
+        guard (try? fileHandle.seek(toOffset: state.lastFileOffset)) != nil,
+              let data = try? fileHandle.readToEnd(),
+              let content = String(data: data, encoding: .utf8) else { return [] }
+
+        var newMessages: [ChatMessage] = []
+        for line in content.components(separatedBy: "\n") where !line.isEmpty {
+            guard let data = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  json["type"] as? String == "message",
+                  let message = json["message"] as? [String: Any],
+                  let role = message["role"] as? String else { continue }
+
+            if role == "toolResult" {
+                guard let toolCallId = message["toolCallId"] as? String else { continue }
+                let toolName = message["toolName"] as? String
+                if let toolName { state.toolIdToName[toolCallId] = toolName }
+                state.completedToolIds.insert(toolCallId)
+                state.toolResults[toolCallId] = ToolResult(
+                    content: piText(from: message),
+                    stdout: nil,
+                    stderr: nil,
+                    isError: message["isError"] as? Bool ?? false
+                )
+                continue
+            }
+
+            guard let parsed = parsePiMessage(
+                json,
+                seenToolIds: &state.seenToolIds,
+                toolIdToName: &state.toolIdToName
+            ) else { continue }
+            newMessages.append(parsed)
+            state.messages.append(parsed)
+        }
+
+        state.lastFileOffset = fileSize
+        return newMessages
+    }
+
+    private func parsePiMessage(
+        _ json: [String: Any],
+        seenToolIds: inout Set<String>,
+        toolIdToName: inout [String: String]
+    ) -> ChatMessage? {
+        guard let message = json["message"] as? [String: Any],
+              let roleString = message["role"] as? String,
+              roleString == "user" || roleString == "assistant",
+              let content = message["content"] as? [[String: Any]] else { return nil }
+
+        var blocks: [MessageBlock] = []
+        for item in content {
+            switch item["type"] as? String {
+            case "text":
+                if let text = item["text"] as? String, !text.isEmpty {
+                    blocks.append(.text(text))
+                }
+            case "thinking":
+                if let thinking = item["thinking"] as? String, !thinking.isEmpty {
+                    blocks.append(.thinking(thinking))
+                }
+            case "toolCall":
+                guard let id = item["id"] as? String,
+                      let name = item["name"] as? String,
+                      !seenToolIds.contains(id) else { continue }
+                seenToolIds.insert(id)
+                toolIdToName[id] = name
+                blocks.append(.toolUse(ToolUseBlock(
+                    id: id,
+                    name: name,
+                    input: piStringInput(item["arguments"])
+                )))
+            default:
+                continue
+            }
+        }
+        guard !blocks.isEmpty else { return nil }
+
+        return ChatMessage(
+            id: json["id"] as? String ?? UUID().uuidString,
+            role: roleString == "user" ? .user : .assistant,
+            timestamp: piTimestamp(json["timestamp"]) ?? Date(),
+            content: blocks
+        )
+    }
+
+    private func piText(from message: [String: Any]) -> String? {
+        if let text = message["content"] as? String { return text }
+        guard let content = message["content"] as? [[String: Any]] else { return nil }
+        let texts = content.compactMap { item -> String? in
+            guard item["type"] as? String == "text" else { return nil }
+            return item["text"] as? String
+        }
+        return texts.isEmpty ? nil : texts.joined(separator: "\n")
+    }
+
+    private func piToolInput(_ value: Any?) -> [String: Any]? {
+        value as? [String: Any]
+    }
+
+    private func piStringInput(_ value: Any?) -> [String: String] {
+        guard let input = value as? [String: Any] else { return [:] }
+        return input.reduce(into: [:]) { result, entry in
+            if let string = entry.value as? String {
+                result[entry.key] = string
+            } else if JSONSerialization.isValidJSONObject(entry.value),
+                      let data = try? JSONSerialization.data(withJSONObject: entry.value),
+                      let string = String(data: data, encoding: .utf8) {
+                result[entry.key] = string
+            } else {
+                result[entry.key] = String(describing: entry.value)
+            }
+        }
+    }
+
+    private func piTimestamp(_ value: Any?) -> Date? {
+        guard let timestamp = value as? String else { return nil }
+        return isoFormatter.date(from: timestamp)
     }
 
     private func parseWorkBuddyContent(_ content: String) -> ConversationInfo {

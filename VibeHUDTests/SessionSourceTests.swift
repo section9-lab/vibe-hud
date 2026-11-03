@@ -31,4 +31,14 @@ struct SessionSourceTests {
 
         #expect(source == .codex)
     }
+
+    @Test("Infers Pi from its transcript path")
+    func infersPiFromTranscript() {
+        let source = SessionSource(
+            rawSource: nil,
+            transcriptPath: "/Users/test/.pi/agent/sessions/project/session.jsonl"
+        )
+
+        #expect(source == .pi)
+    }
 }
