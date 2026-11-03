@@ -112,6 +112,10 @@ struct NotchView: View {
         return 0
     }
 
+    private var isSettingsPresented: Bool {
+        viewModel.contentType == .menu
+    }
+
     private var notchSize: CGSize {
         switch viewModel.status {
         case .closed, .popping:
@@ -187,9 +191,10 @@ struct NotchView: View {
                     )
                     .offset(x: closedNotchOffset)
                     .animation(viewModel.status == .opened ? openAnimation : closeAnimation, value: viewModel.status)
-                    // Content-type size changes are intentionally immediate.
-                    // Animating the AppKit panel and SwiftUI layout independently
-                    // causes edge tearing while opening settings or chat.
+                    .animation(
+                        .easeInOut(duration: NotchTransitionTiming.contentDuration),
+                        value: isSettingsPresented
+                    )
                     .animation(.smooth, value: activityCoordinator.expandingActivity)
                     .animation(.smooth, value: hasPendingPermission)
                     .animation(.smooth, value: hasWaitingForInput)
@@ -241,10 +246,11 @@ struct NotchView: View {
             // Main content only when opened
             if viewModel.status == .opened {
                 contentView
+                    .id(viewModel.contentType.id)
                     .frame(width: NotchLayoutMetrics.openedContentWidth(for: notchSize.width)) // Fixed width to prevent reflow
                     .opacity(showsOpenedContent ? 1 : 0)
                     .allowsHitTesting(showsOpenedContent)
-                    .transition(.identity)
+                    .transition(.opacity)
                     .animation(nil, value: showsOpenedContent)
             }
         }
@@ -330,9 +336,11 @@ struct NotchView: View {
 
             // Menu toggle
             Button {
-                viewModel.toggleMenu()
-                if viewModel.contentType == .menu {
-                    updateManager.markUpdateSeen()
+                withAnimation(.easeInOut(duration: NotchTransitionTiming.contentDuration)) {
+                    viewModel.toggleMenu()
+                    if viewModel.contentType == .menu {
+                        updateManager.markUpdateSeen()
+                    }
                 }
             } label: {
                 Image(systemName: viewModel.contentType == .menu ? "xmark" : "line.3.horizontal")

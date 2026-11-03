@@ -17,6 +17,14 @@ enum NotchStatus: Equatable {
 
 enum NotchTransitionTiming {
     static let openingDuration: TimeInterval = 0.45
+    static let contentDuration: TimeInterval = 0.24
+
+    nonisolated static func contentCanvasSize(current: CGSize, target: CGSize) -> CGSize {
+        CGSize(
+            width: max(current.width, target.width),
+            height: max(current.height, target.height)
+        )
+    }
 }
 
 enum NotchOpenReason {
@@ -75,6 +83,10 @@ class NotchViewModel: ObservableObject {
 
     /// Dynamic content size based on content type.
     var openedSize: CGSize {
+        openedSize(for: contentType)
+    }
+
+    func openedSize(for contentType: NotchContentType) -> CGSize {
         switch contentType {
         case .chat:
             // Large size for chat view
@@ -99,9 +111,14 @@ class NotchViewModel: ObservableObject {
     /// content width, so the window must include them instead of clipping the
     /// content or shrinking its controls.
     var openedWindowSize: CGSize {
-        CGSize(
-            width: NotchLayoutMetrics.renderedWidth(for: openedSize.width),
-            height: openedSize.height
+        openedWindowSize(for: contentType)
+    }
+
+    func openedWindowSize(for contentType: NotchContentType) -> CGSize {
+        let contentSize = openedSize(for: contentType)
+        return CGSize(
+            width: NotchLayoutMetrics.renderedWidth(for: contentSize.width),
+            height: contentSize.height
         )
     }
 

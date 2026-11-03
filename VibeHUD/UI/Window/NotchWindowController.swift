@@ -15,6 +15,7 @@ class NotchWindowController: NSWindowController {
     private let shadowWindow: NotchShadowPanel
     private var cancellables = Set<AnyCancellable>()
     private var pendingInteractionEnable: DispatchWorkItem?
+    private var pendingContentResize: DispatchWorkItem?
 
 
     init(screen: NSScreen, animateOnLaunch: Bool = true) {
@@ -78,6 +79,8 @@ class NotchWindowController: NSWindowController {
                 guard let self else { return }
                 self.pendingInteractionEnable?.cancel()
                 self.pendingInteractionEnable = nil
+                self.pendingContentResize?.cancel()
+                self.pendingContentResize = nil
 
                 switch status {
                 case .opened:
@@ -117,6 +120,22 @@ class NotchWindowController: NSWindowController {
             }
             .store(in: &cancellables)
 
+        // Remove the old contour before SwiftUI swaps content so the shadow
+        // cannot briefly outline two different panel sizes.
+        viewModel.$contentType
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak notchWindow, weak viewModel] contentType in
+                guard let self, let notchWindow, let viewModel,
+                      viewModel.status == .opened else { return }
+                self.beginContentResize(
+                    to: viewModel.openedWindowSize(for: contentType),
+                    viewModel: viewModel,
+                    notchWindow: notchWindow
+                )
+            }
+            .store(in: &cancellables)
+
         // Content and menu heights can change while the HUD is open. Resize the
         // panel after @Published values commit so its hit region stays accurate.
         viewModel.objectWillChange
@@ -125,13 +144,11 @@ class NotchWindowController: NSWindowController {
                 DispatchQueue.main.async {
                     guard let self, self.pendingInteractionEnable == nil,
                           let notchWindow, let viewModel, viewModel.status == .opened else { return }
-                    let panelFrame = viewModel.geometry.interactionWindowFrame(
-                        for: viewModel.openedWindowSize
+                    self.beginContentResize(
+                        to: viewModel.openedWindowSize,
+                        viewModel: viewModel,
+                        notchWindow: notchWindow
                     )
-                    guard notchWindow.frame != panelFrame else { return }
-                    self.hideShadow(from: notchWindow)
-                    notchWindow.setFrame(panelFrame, display: true)
-                    self.showShadow(around: panelFrame, below: notchWindow)
                 }
             }
             .store(in: &cancellables)
@@ -145,6 +162,47 @@ class NotchWindowController: NSWindowController {
                 self?.viewModel.performBootAnimation()
             }
         }
+    }
+
+    private func beginContentResize(
+        to targetSize: CGSize,
+        viewModel: NotchViewModel,
+        notchWindow: NSWindow
+    ) {
+        let targetFrame = viewModel.geometry.interactionWindowFrame(for: targetSize)
+        if notchWindow.frame == targetFrame, pendingContentResize == nil {
+            return
+        }
+
+        pendingContentResize?.cancel()
+        hideShadow(from: notchWindow)
+        notchWindow.ignoresMouseEvents = true
+
+        let canvasSize = NotchTransitionTiming.contentCanvasSize(
+            current: notchWindow.frame.size,
+            target: targetFrame.size
+        )
+        notchWindow.setFrame(
+            viewModel.geometry.interactionWindowFrame(for: canvasSize),
+            display: true
+        )
+
+        let finishResize = DispatchWorkItem { [weak self, weak notchWindow, weak viewModel] in
+            guard let self, let notchWindow, let viewModel,
+                  viewModel.status == .opened else { return }
+            self.pendingContentResize = nil
+            let finalFrame = viewModel.geometry.interactionWindowFrame(
+                for: viewModel.openedWindowSize
+            )
+            notchWindow.setFrame(finalFrame, display: true)
+            notchWindow.ignoresMouseEvents = false
+            self.showShadow(around: finalFrame, below: notchWindow)
+        }
+        pendingContentResize = finishResize
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + NotchTransitionTiming.contentDuration,
+            execute: finishResize
+        )
     }
 
     private func showShadow(around panelFrame: CGRect, below notchWindow: NSWindow) {
@@ -171,6 +229,7 @@ class NotchWindowController: NSWindowController {
 
     deinit {
         pendingInteractionEnable?.cancel()
+        pendingContentResize?.cancel()
         shadowWindow.orderOut(nil)
     }
 }
