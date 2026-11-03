@@ -10,11 +10,10 @@ import socket
 import subprocess
 import sys
 import time
-import uuid
 
 SOCKET_PATH = "/tmp/vibe-hud.sock"
 TIMEOUT_SECONDS = 300  # 5 minutes for permission decisions
-VALID_SOURCES = {"claude", "codex", "cursor", "copilot", "vscodeagent", "pi", "opencode", "workbuddy"}
+VALID_SOURCES = {"claude", "codex", "cursor", "pi", "opencode", "workbuddy"}
 
 EVENT_ALIASES = {
     "sessionStart": "SessionStart",
@@ -23,13 +22,8 @@ EVENT_ALIASES = {
     "preToolUse": "PreToolUse",
     "postToolUse": "PostToolUse",
     "postToolUseFailure": "PostToolUseFailure",
-    "permissionRequest": "PermissionRequest",
-    "agentStop": "Stop",
     "stop": "Stop",
     "afterAgentResponse": "Stop",
-    "userPromptSubmitted": "UserPromptSubmit",
-    "errorOccurred": "StopFailure",
-    "notification": "Notification",
     "preCompact": "PreCompact",
     "postCompact": "PostCompact",
     "subagentStart": "SubagentStart",
@@ -43,10 +37,10 @@ def parse_source_arg():
     for index, arg in enumerate(sys.argv[1:]):
         if arg == "--source" and index + 2 <= len(sys.argv[1:]):
             source = sys.argv[index + 2].strip().lower()
-            return source if source in VALID_SOURCES else None
+            return source if source in VALID_SOURCES else ""
         if arg.startswith("--source="):
             source = arg.split("=", 1)[1].strip().lower()
-            return source if source in VALID_SOURCES else None
+            return source if source in VALID_SOURCES else ""
     return None
 
 
@@ -136,8 +130,6 @@ def find_agent_pid(source, start_pid):
         "claude": ("/claude", "claude.app"),
         "codex": ("/codex", "codex.app"),
         "cursor": ("/cursor", "cursor.app"),
-        "copilot": ("/copilot", "github-copilot", "visual studio code", "code helper"),
-        "vscodeagent": ("visual studio code", "code helper"),
         "workbuddy": ("/workbuddy", "workbuddy.app", "/codebuddy"),
     }.get(source, ())
 
@@ -258,7 +250,10 @@ def main():
     except json.JSONDecodeError:
         sys.exit(1)
 
-    source = parse_source_arg() or infer_source(data)
+    explicit_source = parse_source_arg()
+    if explicit_source == "":
+        return
+    source = explicit_source or infer_source(data)
     session_id = (
         data.get("session_id")
         or data.get("sessionId")
@@ -270,8 +265,6 @@ def main():
     # Do not turn the shared "unknown" fallback into a project-named session.
     if source == "workbuddy" and str(session_id).strip().lower() in {"", "unknown"}:
         return
-    if source == "vscodeagent" and not str(session_id).startswith("vscodeagent-"):
-        session_id = f"vscodeagent-{session_id}"
     raw_event = parse_event_arg() or data.get("hook_event_name") or data.get("hookEventName") or ""
     event = EVENT_ALIASES.get(raw_event, raw_event)
     cwd = data.get("cwd") or next(iter(data.get("workspace_roots", [])), "")
@@ -300,7 +293,7 @@ def main():
     if not isinstance(source_timestamp, (int, float)):
         source_timestamp = time.time()
     elif source_timestamp >= 1_000_000_000_000:
-        # Copilot emits Unix milliseconds; the session store orders events in seconds.
+        # Normalize Unix milliseconds before the session store orders events.
         source_timestamp /= 1000
 
     # Build state object
@@ -371,11 +364,6 @@ def main():
         state["tool_input"] = tool_input
         if tool_use_id:
             state["tool_use_id"] = tool_use_id
-        elif source in {"copilot", "vscodeagent"}:
-            # Native Copilot permission hooks do not carry the tool call ID.
-            # Give this socket request its own identity instead of relying on
-            # a PreToolUse cache entry that may not exist or have identical args.
-            state["tool_use_id"] = f"copilot-permission-{uuid.uuid4()}"
 
         # Send to app and wait for decision
         response = send_event(state)
@@ -386,7 +374,7 @@ def main():
 
             if decision == "allow":
                 # Output JSON to approve
-                output = {"behavior": "allow"} if source in {"copilot", "vscodeagent"} else {
+                output = {
                     "hookSpecificOutput": {
                         "hookEventName": "PermissionRequest",
                         "decision": {"behavior": "allow"},
@@ -398,9 +386,6 @@ def main():
             elif decision == "deny":
                 # Output JSON to deny
                 output = {
-                    "behavior": "deny",
-                    "message": reason or "Denied by user via VibeHUD",
-                } if source in {"copilot", "vscodeagent"} else {
                     "hookSpecificOutput": {
                         "hookEventName": "PermissionRequest",
                         "decision": {

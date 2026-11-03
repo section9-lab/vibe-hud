@@ -21,7 +21,7 @@ extension SessionSource {
         switch self {
         case .claude:
             .claudeOrange
-        case .codex, .copilot:
+        case .codex:
             .white
         case .cursor, .pi, .opencode:
             .gray
@@ -35,10 +35,9 @@ extension SessionSource {
         case .claude: 0
         case .codex: 1
         case .cursor: 2
-        case .copilot: 3
-        case .pi: 4
-        case .opencode: 5
-        case .workbuddy: 6
+        case .pi: 3
+        case .opencode: 4
+        case .workbuddy: 5
         }
     }
 }

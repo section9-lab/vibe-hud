@@ -6,7 +6,7 @@ import Testing
 struct SessionStoreTests {
     @Test(
         "A file sync cannot overwrite a terminal hook event",
-        arguments: ["Stop", "SessionEnd", "StopFailure"], ["claude", "codex", "copilot"]
+        arguments: ["Stop", "SessionEnd", "StopFailure"], ["claude", "codex", "cursor"]
     )
     @MainActor
     func fileSyncPreservesTerminalEvent(event: String, source: String) async {
@@ -60,7 +60,7 @@ struct SessionStoreTests {
         let session = SessionState(
             sessionId: UUID().uuidString,
             cwd: "/tmp/project",
-            source: .copilot,
+            source: .cursor,
             pid: Int(isRunning ? getpid() : process.processIdentifier),
             phase: .processing
         )
@@ -93,7 +93,7 @@ struct SessionStoreTests {
         sessionId: String,
         event: String = "PostToolUse",
         status: String = "processing",
-        source: String = "copilot"
+        source: String = "cursor"
     ) -> HookEvent {
         HookEvent(
             sessionId: sessionId,

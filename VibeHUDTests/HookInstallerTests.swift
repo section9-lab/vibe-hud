@@ -33,28 +33,24 @@ struct HookInstallerTests {
         ])
     }
 
-    @Test("Installs Copilot hooks with the required schema version")
-    func installsCopilotHooks() throws {
-        let url = temporaryFileURL()
-        defer { try? FileManager.default.removeItem(at: url) }
+    @Test("Removes the discontinued Copilot integration files")
+    func removesLegacyCopilotIntegration() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vibehud-copilot-cleanup-\(UUID().uuidString)")
+        let hookFile = directory.appendingPathComponent("vibe-hud.json")
+        let hookScript = directory.appendingPathComponent("vibe-hud-state.py")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("hook".utf8).write(to: hookFile)
+        try Data("script".utf8).write(to: hookScript)
+        defer { try? FileManager.default.removeItem(at: directory) }
 
-        HookInstaller.updateCommandHooks(
-            at: url,
-            events: HookInstaller.copilotEvents,
-            command: "python3 /tmp/vibe-hud-state.py --source copilot",
-            includesVersion: true
+        HookInstaller.removeLegacyCopilotIntegration(
+            hookFile: hookFile,
+            hookScript: hookScript
         )
 
-        let json = try readJSON(at: url)
-        #expect(json["version"] as? Int == 1)
-        let hooks = try #require(json["hooks"] as? [String: Any])
-        #expect(Set(hooks.keys) == Set(HookInstaller.copilotEvents))
-        for event in HookInstaller.copilotEvents {
-            let entries = try #require(hooks[event] as? [[String: Any]])
-            #expect(entries.allSatisfy { $0["type"] as? String == "command" })
-        }
-        let permission = try #require((hooks["permissionRequest"] as? [[String: Any]])?.first)
-        #expect(permission["timeoutSec"] as? Int == 360)
+        #expect(!FileManager.default.fileExists(atPath: hookFile.path))
+        #expect(!FileManager.default.fileExists(atPath: hookScript.path))
     }
 
     @Test("Codex allows time for human approvals and bounds session shutdown")
@@ -73,36 +69,6 @@ struct HookInstallerTests {
                 #expect(entries.contains { $0["command"] as? String == "echo keep-me" })
             }
         }
-    }
-
-    @Test("Updating shared Copilot hooks removes duplicate legacy VS Code registrations")
-    func removesDuplicateCopilotRegistrations() throws {
-        let url = temporaryFileURL()
-        defer { try? FileManager.default.removeItem(at: url) }
-        try writeJSON([
-            "hooks": [
-                "PreToolUse": [
-                    ["command": "echo keep-me"],
-                    ["command": "python3 /tmp/vibe-hud-state.py --source vscodeagent --event PreToolUse"],
-                ],
-                "PostToolUse": [
-                    ["command": "python3 /tmp/vibe-hud-state.py --source vscodeagent --event PostToolUse"],
-                ],
-            ]
-        ], to: url)
-
-        HookInstaller.updateCommandHooks(
-            at: url,
-            events: HookInstaller.copilotEvents,
-            command: "python3 /tmp/vibe-hud-state.py --source copilot",
-            includesVersion: true
-        )
-
-        let hooks = try #require(readJSON(at: url)["hooks"] as? [String: Any])
-        let legacyPreToolUse = try #require(hooks["PreToolUse"] as? [[String: Any]])
-        #expect(legacyPreToolUse.compactMap { $0["command"] as? String } == ["echo keep-me"])
-        #expect(hooks["PostToolUse"] == nil)
-        #expect(Set(hooks.keys) == Set(HookInstaller.copilotEvents + ["PreToolUse"]))
     }
 
     @Test("Installs WorkBuddy hooks without removing other integrations")

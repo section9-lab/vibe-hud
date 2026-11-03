@@ -185,7 +185,8 @@ enum CursorPaths {
     }
 }
 
-enum CopilotPaths {
+/// Paths retained only to remove VibeHUD's discontinued GitHub Copilot hook.
+enum LegacyCopilotPaths {
     nonisolated static var configDir: URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".copilot")
     }

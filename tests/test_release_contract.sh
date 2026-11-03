@@ -86,3 +86,9 @@ if ! grep -Fq 'transcript_path: ctx.sessionManager.getSessionFile()' \
     echo "The Pi extension must report its transcript so messages can be displayed" >&2
     exit 1
 fi
+
+if [ -d "$repo_root/VibeHUD/Assets.xcassets/AgentGitHubCopilot.imageset" ] || \
+   grep -Fq 'GitHub Copilot' "$repo_root/VibeHUD/UI/Views/NotchMenuView.swift"; then
+    echo "The discontinued GitHub Copilot agent must not appear in the product UI" >&2
+    exit 1
+fi

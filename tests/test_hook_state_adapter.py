@@ -18,22 +18,18 @@ def load_adapter():
 
 
 class HookStateAdapterTests(unittest.TestCase):
-    def test_permission_decisions_match_each_agent_protocol(self):
+    def test_permission_decisions_use_the_supported_hook_protocol(self):
         import json
-        for source in ("claude", "codex", "copilot", "vscodeagent"):
+        for source in ("claude", "codex"):
             for decision in ("allow", "deny"):
                 with self.subTest(source=source, decision=decision):
                     adapter = load_adapter()
                     output = io.StringIO()
-                    sent = []
-                    def respond(state):
-                        sent.append(state)
-                        return {"decision": decision, "reason": "Audit denial"}
                     payload = {"sessionId": "session", "toolName": "bash", "toolInput": {"command": "pwd"}}
-                    with mock.patch.object(sys, "argv", [str(SCRIPT), "--source", source, "--event", "permissionRequest"]), \
+                    with mock.patch.object(sys, "argv", [str(SCRIPT), "--source", source, "--event", "PermissionRequest"]), \
                          mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))), \
                          mock.patch.object(sys, "stdout", output), \
-                         mock.patch.object(adapter, "send_event", side_effect=respond), \
+                         mock.patch.object(adapter, "send_event", return_value={"decision": decision, "reason": "Audit denial"}), \
                          mock.patch.object(adapter, "find_agent_pid", return_value=None), \
                          mock.patch.object(adapter, "get_tty", return_value=None), \
                          mock.patch.object(adapter, "find_terminal_pid", return_value=None):
@@ -41,14 +37,7 @@ class HookStateAdapterTests(unittest.TestCase):
                             adapter.main()
                     self.assertEqual(exited.exception.code, 0)
                     result = json.loads(output.getvalue())
-                    if source in {"copilot", "vscodeagent"}:
-                        self.assertEqual(result["behavior"], decision)
-                        self.assertNotIn("hookSpecificOutput", result)
-                        self.assertTrue(sent[0]["tool_use_id"].startswith("copilot-permission-"))
-                        if decision == "deny":
-                            self.assertEqual(result["message"], "Audit denial")
-                    else:
-                        self.assertEqual(result["hookSpecificOutput"]["decision"]["behavior"], decision)
+                    self.assertEqual(result["hookSpecificOutput"]["decision"]["behavior"], decision)
 
     def run_adapter(self, payload, *arguments):
         adapter = load_adapter()
@@ -64,6 +53,16 @@ class HookStateAdapterTests(unittest.TestCase):
 
         self.assertEqual(len(sent), 1)
         return sent[0]
+
+    def test_discontinued_copilot_sources_are_ignored(self):
+        for source in ("copilot", "githubcopilot", "vscodeagent"):
+            with self.subTest(source=source):
+                adapter = load_adapter()
+                with mock.patch.object(sys, "argv", [str(SCRIPT), "--source", source, "--event", "UserPromptSubmit"]), \
+                     mock.patch.object(sys, "stdin", io.StringIO('{"sessionId":"legacy"}')), \
+                     mock.patch.object(adapter, "send_event") as send:
+                    adapter.main()
+                send.assert_not_called()
 
     def test_workbuddy_host_hooks_without_session_identity_are_ignored(self):
         for payload in ({}, {"session_id": "unknown"}, {"sessionId": "   "}):
@@ -84,33 +83,27 @@ class HookStateAdapterTests(unittest.TestCase):
         self.assertEqual(state["status"], "running_tool")
         self.assertEqual(state["transcript_path"], "/tmp/actual-task.jsonl")
 
-    def test_copilot_camel_case_payload_uses_explicit_event(self):
+    def test_cursor_camel_case_payload_uses_explicit_event(self):
         state = self.run_adapter(
-            {
-                "sessionId": "copilot-session",
-                "cwd": "/tmp/project",
-                "prompt": "Fix the bug",
-            },
-            "--source", "copilot",
-            "--event", "userPromptSubmitted",
+            {"sessionId": "cursor-session", "cwd": "/tmp/project"},
+            "--source", "cursor", "--event", "beforeSubmitPrompt",
         )
 
-        self.assertEqual(state["session_id"], "copilot-session")
+        self.assertEqual(state["session_id"], "cursor-session")
         self.assertEqual(state["event"], "UserPromptSubmit")
         self.assertEqual(state["status"], "processing")
-        self.assertEqual(state["source"], "copilot")
+        self.assertEqual(state["source"], "cursor")
 
-    def test_copilot_tool_payload_preserves_camel_case_fields(self):
+    def test_cursor_tool_payload_preserves_camel_case_fields(self):
         state = self.run_adapter(
             {
-                "sessionId": "copilot-session",
+                "sessionId": "cursor-session",
                 "cwd": "/tmp/project",
                 "toolName": "shell",
                 "toolArgs": {"command": "pwd"},
                 "toolCallId": "call-1",
             },
-            "--source", "copilot",
-            "--event", "preToolUse",
+            "--source", "cursor", "--event", "preToolUse",
         )
 
         self.assertEqual(state["event"], "PreToolUse")
@@ -118,28 +111,22 @@ class HookStateAdapterTests(unittest.TestCase):
         self.assertEqual(state["tool_input"], {"command": "pwd"})
         self.assertEqual(state["tool_use_id"], "call-1")
 
-    def test_copilot_serialized_tool_arguments_are_decoded_for_swift(self):
+    def test_cursor_serialized_tool_arguments_are_decoded_for_swift(self):
         for event in ("preToolUse", "postToolUse"):
             with self.subTest(event=event):
                 state = self.run_adapter(
-                    {
-                        "sessionId": "copilot-session",
-                        "toolName": "view",
-                        "toolArgs": '{"path":"/tmp/probe.txt"}',
-                    },
-                    "--source", "copilot", "--event", event,
+                    {"sessionId": "cursor-session", "toolName": "view", "toolArgs": '{"path":"/tmp/probe.txt"}'},
+                    "--source", "cursor", "--event", event,
                 )
-
                 self.assertEqual(state["tool_input"], {"path": "/tmp/probe.txt"})
 
     def test_invalid_tool_arguments_remain_a_json_object(self):
         for arguments in ("invalid json", "[]", "null"):
             with self.subTest(arguments=arguments):
                 state = self.run_adapter(
-                    {"sessionId": "copilot-session", "toolName": "view", "toolArgs": arguments},
-                    "--source", "copilot", "--event", "preToolUse",
+                    {"sessionId": "cursor-session", "toolName": "view", "toolArgs": arguments},
+                    "--source", "cursor", "--event", "preToolUse",
                 )
-
                 self.assertEqual(state["tool_input"], {})
 
     def test_cursor_compaction_event_enters_compacting_state(self):
@@ -187,17 +174,6 @@ class HookStateAdapterTests(unittest.TestCase):
 
         self.assertEqual(state["status"], "waiting_for_input")
 
-    def test_vscode_agent_is_namespaced_from_copilot_cli(self):
-        state = self.run_adapter(
-            {"session_id": "shared-session", "cwd": "/tmp/project"},
-            "--source", "vscodeagent",
-            "--event", "UserPromptSubmit",
-        )
-
-        self.assertEqual(state["source"], "vscodeagent")
-        self.assertEqual(state["session_id"], "vscodeagent-shared-session")
-        self.assertEqual(state["status"], "processing")
-
     def test_string_source_timestamp_is_normalized_for_swift_decoder(self):
         state = self.run_adapter(
             {
@@ -211,14 +187,13 @@ class HookStateAdapterTests(unittest.TestCase):
 
         self.assertIsInstance(state["event_timestamp"], float)
 
-    def test_copilot_millisecond_timestamps_are_converted_to_seconds(self):
+    def test_millisecond_timestamps_are_converted_to_seconds(self):
         for timestamp in (1788434716013, 1788434716013.0):
             with self.subTest(timestamp=timestamp):
                 state = self.run_adapter(
-                    {"sessionId": "copilot-session", "timestamp": timestamp},
-                    "--source", "copilot", "--event", "postToolUse",
+                    {"sessionId": "cursor-session", "timestamp": timestamp},
+                    "--source", "cursor", "--event", "postToolUse",
                 )
-
                 self.assertEqual(state["event_timestamp"], 1788434716.013)
 
     def test_second_timestamps_keep_their_precision(self):
@@ -228,36 +203,6 @@ class HookStateAdapterTests(unittest.TestCase):
         )
 
         self.assertEqual(state["event_timestamp"], 1788434716.013)
-
-    def test_copilot_error_is_reported_as_failure(self):
-        state = self.run_adapter(
-            {
-                "sessionId": "copilot-session",
-                "cwd": "/tmp/project",
-                "message": "Request failed",
-            },
-            "--source", "copilot",
-            "--event", "errorOccurred",
-        )
-
-        self.assertEqual(state["event"], "StopFailure")
-        self.assertEqual(state["status"], "failed")
-        self.assertEqual(state["message"], "Request failed")
-
-    def test_copilot_notification_camel_case_waits_for_user(self):
-        state = self.run_adapter(
-            {
-                "sessionId": "copilot-session",
-                "cwd": "/tmp/project",
-                "notificationType": "agent_needs_input",
-                "message": "Choose an option",
-            },
-            "--source", "copilot",
-            "--event", "notification",
-        )
-
-        self.assertEqual(state["status"], "waiting_for_input")
-        self.assertEqual(state["notification_type"], "agent_needs_input")
 
     def test_cursor_stop_error_is_reported_as_failure(self):
         state = self.run_adapter(
@@ -283,16 +228,6 @@ class HookStateAdapterTests(unittest.TestCase):
 
         with mock.patch.object(adapter.subprocess, "run", side_effect=process_rows):
             self.assertEqual(adapter.find_agent_pid("codex", 42), 41)
-
-    def test_shared_copilot_hook_finds_vs_code_process(self):
-        adapter = load_adapter()
-        process_rows = [
-            SimpleNamespace(stdout="41 /bin/sh -c python3 vibe-hud-state.py\n"),
-            SimpleNamespace(stdout="1 /Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin)\n"),
-        ]
-
-        with mock.patch.object(adapter.subprocess, "run", side_effect=process_rows):
-            self.assertEqual(adapter.find_agent_pid("copilot", 42), 41)
 
     def test_workbuddy_hook_preserves_transcript_and_source(self):
         state = self.run_adapter(

@@ -15,7 +15,6 @@ enum NotchActivityType: Equatable {
     case claude      // Claude is processing
     case codex
     case cursor
-    case copilot
     case pi
     case opencode
     case workbuddy

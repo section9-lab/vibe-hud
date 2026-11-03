@@ -113,9 +113,6 @@ struct NotchMenuView: View {
                     MenuToggleRow(source: .cursor, label: "Cursor", isOn: hookState(for: .cursor), isNested: true) {
                         toggleHook(.cursor)
                     }
-                    MenuToggleRow(source: .copilot, label: "GitHub Copilot", isOn: hookState(for: .githubCopilot), isNested: true) {
-                        toggleHook(.githubCopilot)
-                    }
                     MenuToggleRow(source: .pi, label: "Pi", isOn: hookState(for: .pi), isNested: true) {
                         toggleHook(.pi)
                     }

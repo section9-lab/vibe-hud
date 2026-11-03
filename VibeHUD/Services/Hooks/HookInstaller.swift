@@ -11,7 +11,6 @@ enum HookAgent: CaseIterable {
     case claude
     case codex
     case cursor
-    case githubCopilot
     case pi
     case openCode
     case workBuddy
@@ -24,12 +23,6 @@ struct HookInstaller {
         "subagentStop", "stop",
     ]
 
-    nonisolated static let copilotEvents = [
-        "sessionStart", "sessionEnd", "userPromptSubmitted", "preToolUse",
-        "postToolUse", "postToolUseFailure", "permissionRequest", "agentStop",
-        "errorOccurred", "notification", "preCompact", "subagentStart", "subagentStop",
-    ]
-
     nonisolated static let workBuddyEvents = [
         "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse",
         "PostToolUse", "Stop", "PreCompact", "Notification",
@@ -38,6 +31,7 @@ struct HookInstaller {
 
     /// Refresh hooks that were already enabled by the user.
     static func installIfNeeded() {
+        removeLegacyCopilotIntegration()
         for agent in HookAgent.allCases where isInstalled(agent) {
             install(agent)
         }
@@ -51,8 +45,6 @@ struct HookInstaller {
             installCodexHooksIfNeeded()
         case .cursor:
             installCursorHooksIfNeeded()
-        case .githubCopilot:
-            installGitHubCopilotHooksIfNeeded()
         case .pi:
             installPiExtensionIfNeeded()
         case .openCode:
@@ -73,9 +65,6 @@ struct HookInstaller {
         case .cursor:
             try? FileManager.default.removeItem(at: CursorPaths.hookScriptPath)
             removeCommandHooks(at: CursorPaths.hooksFile)
-        case .githubCopilot:
-            try? FileManager.default.removeItem(at: CopilotPaths.hookScriptPath)
-            try? FileManager.default.removeItem(at: CopilotPaths.hookFile)
         case .pi:
             try? FileManager.default.removeItem(at: PiPaths.extensionFile)
         case .openCode:
@@ -95,8 +84,6 @@ struct HookInstaller {
             isInstalled(at: CodexPaths.hooksFile)
         case .cursor:
             isInstalledCommandHooks(at: CursorPaths.hooksFile, script: CursorPaths.hookScriptPath)
-        case .githubCopilot:
-            isInstalledCommandHooks(at: CopilotPaths.hookFile, script: CopilotPaths.hookScriptPath)
         case .pi:
             FileManager.default.fileExists(atPath: PiPaths.extensionFile.path)
         case .openCode:
@@ -164,19 +151,14 @@ struct HookInstaller {
         )
     }
 
-    private static func installGitHubCopilotHooksIfNeeded() {
-        try? FileManager.default.createDirectory(
-            at: CopilotPaths.hooksDir,
-            withIntermediateDirectories: true
-        )
-
-        installScript(resource: "vibe-hud-state", to: CopilotPaths.hookScriptPath)
-        updateCommandHooks(
-            at: CopilotPaths.hookFile,
-            events: copilotEvents,
-            command: "python3 \(shellQuote(CopilotPaths.hookScriptPath.path)) --source copilot",
-            includesVersion: true
-        )
+    /// GitHub Copilot support was removed. Delete the dedicated integration
+    /// files on every launch so previously enabled hooks stop invoking VibeHUD.
+    static func removeLegacyCopilotIntegration(
+        hookFile: URL = LegacyCopilotPaths.hookFile,
+        hookScript: URL = LegacyCopilotPaths.hookScriptPath
+    ) {
+        try? FileManager.default.removeItem(at: hookFile)
+        try? FileManager.default.removeItem(at: hookScript)
     }
 
     private static func installPiExtensionIfNeeded() {
@@ -584,8 +566,7 @@ struct HookInstaller {
     nonisolated private static func isManagedCommandHook(_ entry: [String: Any]) -> Bool {
         let command = entry["command"] as? String ?? ""
         return command.contains("vibe-hud-state.py") ||
-            (command.contains("shellQuote(") &&
-                (command.contains("--source cursor") || command.contains("--source copilot")))
+            (command.contains("shellQuote(") && command.contains("--source cursor"))
     }
 
     private static let piExtension = """

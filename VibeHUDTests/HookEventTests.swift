@@ -69,6 +69,13 @@ struct HookEventTests {
         #expect(stopFailure.shouldSyncFile)
     }
 
+    @Test("Ignores events from discontinued Copilot integrations")
+    func ignoresDiscontinuedCopilotEvents() {
+        for source in ["copilot", "githubcopilot", "vscodeagent"] {
+            #expect(!makeEvent(status: "processing", source: source).isDisplayableSession)
+        }
+    }
+
     @Test("Ignores WorkBuddy prewarm pool sessions")
     func ignoresWorkBuddyPrewarmPool() {
         let prewarm = makeEvent(

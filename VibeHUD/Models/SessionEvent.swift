@@ -130,7 +130,12 @@ struct ToolCompletionResult: Sendable {
 extension HookEvent {
     /// WorkBuddy launches internal host and prewarm workers that are not user sessions.
     nonisolated var isDisplayableSession: Bool {
-        source?.lowercased() != "workbuddy" ||
+        let normalizedSource = source?.lowercased()
+        if let normalizedSource,
+           ["copilot", "githubcopilot", "vscodeagent"].contains(normalizedSource) {
+            return false
+        }
+        return normalizedSource != "workbuddy" ||
             WorkBuddySessionDirectory.isUserSession(sessionId: sessionId, cwd: cwd)
     }
 

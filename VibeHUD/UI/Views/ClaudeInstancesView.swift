@@ -372,8 +372,6 @@ struct InstanceRow: View {
             Color(red: 122 / 255, green: 157 / 255, blue: 1.0)
         case .cursor:
             .purple
-        case .copilot:
-            .cyan
         case .pi:
             .mint
         case .opencode:

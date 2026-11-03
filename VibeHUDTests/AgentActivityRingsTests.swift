@@ -21,7 +21,7 @@ struct AgentActivityRingsTests {
             session("processing", source: .claude, phase: .processing),
             session("compacting", source: .codex, phase: .compacting),
             session("idle", source: .cursor, phase: .idle),
-            session("waiting", source: .copilot, phase: .waitingForInput),
+            session("waiting", source: .workbuddy, phase: .waitingForInput),
             session("failed", source: .pi, phase: .failed(nil)),
             session("ended", source: .opencode, phase: .ended),
         ])
@@ -136,7 +136,6 @@ struct AgentActivityRingsTests {
     func mapsAgentTints() {
         #expect(SessionSource.claude.activityTint == .claudeOrange)
         #expect(SessionSource.codex.activityTint == .white)
-        #expect(SessionSource.copilot.activityTint == .white)
         #expect(SessionSource.cursor.activityTint == .gray)
         #expect(SessionSource.pi.activityTint == .gray)
         #expect(SessionSource.opencode.activityTint == .gray)

@@ -12,7 +12,6 @@ enum SessionSource: String, Codable, Equatable, Hashable, Sendable {
     case claude
     case codex
     case cursor
-    case copilot
     case pi
     case opencode
     case workbuddy
@@ -28,9 +27,6 @@ enum SessionSource: String, Codable, Equatable, Hashable, Sendable {
                 return
             case "cursor":
                 self = .cursor
-                return
-            case "copilot", "githubcopilot", "vscodeagent":
-                self = .copilot
                 return
             case "pi":
                 self = .pi
@@ -77,8 +73,6 @@ enum SessionSource: String, Codable, Equatable, Hashable, Sendable {
             "Codex"
         case .cursor:
             "Cursor"
-        case .copilot:
-            "GitHub Copilot"
         case .pi:
             "Pi"
         case .opencode:
@@ -93,7 +87,6 @@ enum SessionSource: String, Codable, Equatable, Hashable, Sendable {
         case .claude: "AgentClaude"
         case .codex: "AgentGPT"
         case .cursor: "AgentCursor"
-        case .copilot: "AgentGitHubCopilot"
         case .pi: "AgentPi"
         case .opencode: "AgentOpenCode"
         case .workbuddy: "AgentWorkBuddy"
