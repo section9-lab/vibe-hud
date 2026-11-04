@@ -42,7 +42,8 @@ class ClaudeSessionMonitor: ObservableObject {
                     await SessionStore.shared.process(.hookReceived(event))
                 }
 
-                if event.sessionPhase == .processing {
+                if event.sessionPhase == .processing,
+                   JSONLInterruptWatcher.shouldWatch(source: event.source, transcriptPath: event.transcriptPath) {
                     Task { @MainActor in
                         if let transcriptPath = event.transcriptPath, !transcriptPath.isEmpty {
                             InterruptWatcherManager.shared.startWatching(

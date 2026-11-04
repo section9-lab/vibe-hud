@@ -22,20 +22,18 @@ class JSONLInterruptWatcher {
     private var fileHandle: FileHandle?
     private var source: DispatchSourceFileSystemObject?
     private var lastOffset: UInt64 = 0
+    private var scanner = JSONLInterruptScanner()
     private let sessionId: String
     private let filePath: String
     private let queue = DispatchQueue(label: "com.vibehud.interruptwatcher", qos: .userInteractive)
 
     weak var delegate: JSONLInterruptWatcherDelegate?
 
-    /// Patterns that indicate an interrupt occurred
-    /// We check for is_error:true combined with interrupt content
-    private static let interruptContentPatterns = [
-        "Interrupted by user",
-        "interrupted by user",
-        "user doesn't want to proceed",
-        "[Request interrupted by user"
-    ]
+    nonisolated static func shouldWatch(source: String?, transcriptPath: String?) -> Bool {
+        guard SessionSource(rawSource: source, transcriptPath: transcriptPath) != .opencode else { return false }
+        guard let transcriptPath, !transcriptPath.isEmpty else { return true }
+        return URL(fileURLWithPath: transcriptPath).pathExtension.lowercased() == "jsonl"
+    }
 
     init(sessionId: String, cwd: String) {
         self.sessionId = sessionId
@@ -66,11 +64,14 @@ class JSONLInterruptWatcher {
         }
 
         fileHandle = handle
+        scanner = JSONLInterruptScanner()
 
         do {
             lastOffset = try handle.seekToEnd()
         } catch {
             logger.error("Failed to seek to end: \(error.localizedDescription, privacy: .public)")
+            try? handle.close()
+            fileHandle = nil
             return
         }
 
@@ -85,9 +86,8 @@ class JSONLInterruptWatcher {
             self?.checkForInterrupt()
         }
 
-        newSource.setCancelHandler { [weak self] in
-            try? self?.fileHandle?.close()
-            self?.fileHandle = nil
+        newSource.setCancelHandler {
+            try? handle.close()
         }
 
         source = newSource
@@ -106,55 +106,30 @@ class JSONLInterruptWatcher {
             return
         }
 
+        if currentSize < lastOffset {
+            lastOffset = 0
+            scanner = JSONLInterruptScanner()
+        }
         guard currentSize > lastOffset else { return }
 
         do {
             try handle.seek(toOffset: lastOffset)
+            // Read only the size observed at the start of this event, in bounded chunks.
+            while lastOffset < currentSize {
+                let count = Int(min(currentSize - lastOffset, 64 * 1024))
+                guard let data = try handle.read(upToCount: count), !data.isEmpty else { break }
+                lastOffset += UInt64(data.count)
+                if scanner.consume(data) {
+                    logger.info("Detected interrupt in session: \(self.sessionId.prefix(8), privacy: .public)")
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
+                        self.delegate?.didDetectInterrupt(sessionId: self.sessionId)
+                    }
+                }
+            }
         } catch {
-            return
+            logger.error("Failed to read transcript: \(error.localizedDescription, privacy: .public)")
         }
-
-        guard let newData = try? handle.readToEnd(),
-              let newContent = String(data: newData, encoding: .utf8) else {
-            return
-        }
-
-        lastOffset = currentSize
-
-        let lines = newContent.components(separatedBy: "\n")
-        for line in lines where !line.isEmpty {
-            if isInterruptLine(line) {
-                logger.info("Detected interrupt in session: \(self.sessionId.prefix(8), privacy: .public)")
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
-                    self.delegate?.didDetectInterrupt(sessionId: self.sessionId)
-                }
-                return
-            }
-        }
-    }
-
-    private func isInterruptLine(_ line: String) -> Bool {
-        if line.contains("\"type\":\"user\"") {
-            if line.contains("[Request interrupted by user]") ||
-               line.contains("[Request interrupted by user for tool use]") {
-                return true
-            }
-        }
-
-        if line.contains("\"tool_result\"") && line.contains("\"is_error\":true") {
-            for pattern in Self.interruptContentPatterns {
-                if line.contains(pattern) {
-                    return true
-                }
-            }
-        }
-
-        if line.contains("\"interrupted\":true") {
-            return true
-        }
-
-        return false
     }
 
     /// Stop watching
@@ -170,11 +145,63 @@ class JSONLInterruptWatcher {
         }
         source?.cancel()
         source = nil
-        // fileHandle closed by cancel handler
+        fileHandle = nil
+        // The cancel handler owns and closes the corresponding handle.
     }
 
     deinit {
         source?.cancel()
+    }
+}
+
+/// Buffers complete JSONL lines only. Invalid or excessively large lines are skipped,
+/// so malformed input cannot cause unbounded memory use or repeated reads.
+struct JSONLInterruptScanner {
+    private let maximumLineBytes: Int
+    private var pending = Data()
+    private var discardingLine = false
+
+    init(maximumLineBytes: Int = 1_048_576) {
+        self.maximumLineBytes = maximumLineBytes
+    }
+
+    mutating func consume(_ data: Data) -> Bool {
+        var found = false
+        var start = data.startIndex
+        while start < data.endIndex {
+            let newline = data[start...].firstIndex(of: 0x0a)
+            let end = newline ?? data.endIndex
+            if !discardingLine {
+                let segment = data[start..<end]
+                if segment.count > maximumLineBytes - pending.count {
+                    pending.removeAll(keepingCapacity: false)
+                    discardingLine = true
+                } else {
+                    pending.append(contentsOf: segment)
+                }
+            }
+            guard let newline else { break }
+            if !discardingLine, let line = String(data: pending, encoding: .utf8), Self.isInterruptLine(line) {
+                found = true
+            }
+            pending.removeAll(keepingCapacity: true)
+            discardingLine = false
+            start = data.index(after: newline)
+        }
+        return found
+    }
+
+    private static func isInterruptLine(_ line: String) -> Bool {
+        if line.contains("\"type\":\"user\"") &&
+            (line.contains("[Request interrupted by user]") ||
+             line.contains("[Request interrupted by user for tool use]")) {
+            return true
+        }
+        if line.contains("\"tool_result\"") && line.contains("\"is_error\":true") {
+            return ["Interrupted by user", "interrupted by user", "user doesn't want to proceed",
+                    "[Request interrupted by user"].contains { line.contains($0) }
+        }
+        return line.contains("\"interrupted\":true")
     }
 }
 
