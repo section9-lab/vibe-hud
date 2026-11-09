@@ -219,6 +219,22 @@ struct SessionState: Equatable, Identifiable, Sendable {
         phase.needsAttention
     }
 
+    /// Whether the session has anything worth showing in the session list.
+    ///
+    /// Agent hosts create a session as soon as a project is opened or prewarmed,
+    /// before the first message is written. Those placeholder sessions must not
+    /// appear as "No recent activity" rows next to the real conversation.
+    var isDisplayable: Bool {
+        switch phase {
+        case .processing, .compacting, .waitingForApproval, .failed:
+            return true
+        case .idle, .waitingForInput, .ended:
+            return !chatItems.isEmpty
+                || conversationInfo.lastMessage != nil
+                || conversationInfo.firstUserMessage != nil
+        }
+    }
+
     /// The active permission context, if any
     var activePermission: PermissionContext? {
         if case .waitingForApproval(let ctx) = phase {

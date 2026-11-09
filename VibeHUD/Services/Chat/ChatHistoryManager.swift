@@ -81,8 +81,8 @@ class ChatHistoryManager: ObservableObject {
             let filteredItems = filterOutSubagentTools(session.chatItems)
             newHistories[session.sessionId] = filteredItems
             newAgentDescriptions[session.sessionId] = session.subagentState.agentDescriptions
-            loadedSessions.insert(session.sessionId)
         }
+        loadedSessions.formIntersection(Set(sessions.map(\.sessionId)))
         histories = newHistories
         agentDescriptions = newAgentDescriptions
     }

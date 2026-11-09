@@ -78,6 +78,37 @@ struct SessionStoreTests {
         #expect((remaining != nil) == isRunning)
     }
 
+    @Test("A newly discovered Pi session loads history even on a non-sync hook")
+    @MainActor
+    func newSessionLoadsHistory() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = root.appendingPathComponent(".pi/agent/sessions/project")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transcript = directory.appendingPathComponent("session.jsonl")
+        try """
+        {"type":"session","version":3,"id":"test"}
+        {"type":"message","id":"message-1","timestamp":"2026-01-01T00:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"Existing conversation"}]}}
+
+        """.write(to: transcript, atomically: true, encoding: .utf8)
+        let sessionId = "pi-" + UUID().uuidString
+        let store = SessionStore()
+        let hook = HookEvent(
+            sessionId: sessionId, cwd: "/tmp/project", event: "SessionStatus", status: "waiting_for_input",
+            source: "pi", pid: nil, tty: nil, transcriptPath: transcript.path,
+            terminalBundleId: nil, terminalPid: nil, tmuxPane: nil, tmuxSocket: nil,
+            tool: nil, toolInput: nil, toolUseId: nil, notificationType: nil, message: nil
+        )
+        await store.process(.hookReceived(hook))
+        for _ in 0..<50 {
+            if await store.session(for: sessionId)?.chatItems.isEmpty == false { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let session = try #require(await store.session(for: sessionId))
+        #expect(session.chatItems.contains { $0.type == .user("Existing conversation") })
+        #expect(session.conversationInfo.firstUserMessage == "Existing conversation")
+    }
+
     private func syncWhileHandling(
         _ event: SessionEvent,
         payload: FileUpdatePayload,

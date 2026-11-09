@@ -159,7 +159,8 @@ actor SessionStore {
             Self.logger.debug("Ignoring non-lifecycle hook \(event.event, privacy: .public) status=\(event.status, privacy: .public) for \(sessionId.prefix(8), privacy: .public)")
             return
         }
-        var session = sessions[sessionId] ?? createSession(from: event)
+        let previousSession = sessions[sessionId]
+        var session = previousSession ?? createSession(from: event)
 
         if event.event == "WorkBuddyRecovery", let existing = sessions[sessionId] {
             // Discovery without evidence must not overwrite a live hook. Transcript
@@ -261,7 +262,7 @@ actor SessionStore {
         sessions[sessionId] = session
         publishState()
 
-        if event.shouldSyncFile {
+        if event.shouldSyncFile || previousSession == nil || previousSession?.transcriptPath != session.transcriptPath {
             scheduleFileSync(sessionId: sessionId, cwd: event.cwd)
         }
     }

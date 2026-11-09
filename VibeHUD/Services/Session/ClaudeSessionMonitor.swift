@@ -149,8 +149,9 @@ class ClaudeSessionMonitor: ObservableObject {
     // MARK: - State Update
 
     private func updateFromSessions(_ sessions: [SessionState]) {
-        instances = sessions
-        pendingInstances = sessions.filter { $0.needsAttention }
+        let displayable = sessions.filter(\.isDisplayable)
+        instances = displayable
+        pendingInstances = displayable.filter { $0.needsAttention }
     }
 
     // MARK: - History Loading (for UI)
